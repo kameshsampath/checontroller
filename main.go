@@ -1,195 +1,142 @@
+/*
+Copyright 2017 Kamesh Sampath<kamesh.sampath@hotmail.com>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"log"
-	"net/http"
-	"time"
+	"flag"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/util/workqueue"
+
+	"github.com/kameshsampath/che-stack-refresher/che"
+
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
+
+	log "github.com/sirupsen/logrus"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const (
-	maxRetries     = 12
-	retrySleepTime = 10
-	cheEndpointURI = "http://che-myproject.192.168.64.11.nip.io/api"
-	newStackURL    = "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json"
-)
-
-// Stack represents the id and name of the stack
-type stack struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-//addNewStack will add a new Che Stack Json
-func addNewStack(stack json.RawMessage) (int, error) {
-	req, err := http.NewRequest(http.MethodPost, cheEndpointURI+"/stack/", bytes.NewBuffer(stack))
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cheClient := http.Client{}
-	resp, err := cheClient.Do(req)
-
-	return resp.StatusCode, err
-}
-
-//deleteStack will add delete a stack identified by stackID
-func deleteStack(stack stack) (int, error) {
-	req, err := http.NewRequest(http.MethodDelete, cheEndpointURI+"/stack/"+stack.ID, nil)
-	req.Header.Set("Accept", "application/json")
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cheClient := http.Client{}
-	resp, err := cheClient.Do(req)
-
-	return resp.StatusCode, err
-}
-
-//newStacks fetches new stacks from remote url
-func newStacks() ([]json.RawMessage, error) {
-	req, err := http.NewRequest(http.MethodGet, newStackURL, nil)
-	req.Header.Set("Accept", "application/json")
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cheClient := http.Client{}
-
-	resp, err := cheClient.Do(req)
-
-	var newStacks []json.RawMessage
-
-	stackJSON, err := ioutil.ReadAll(resp.Body)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	json.Unmarshal(stackJSON, &newStacks)
-
-	return newStacks, err
-}
-
-//queryStacks will query the Che for existing stack
-func queryStacks() ([]stack, error) {
-	req, err := http.NewRequest(http.MethodGet, cheEndpointURI+"/stack", nil)
-	req.Header.Set("Accept", "application/json")
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cheClient := http.Client{}
-
-	resp, err := cheClient.Do(req)
-
-	stackJSON, err := ioutil.ReadAll(resp.Body)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var stacksIds = make([]stack, 0)
-
-	json.Unmarshal(stackJSON, &stacksIds)
-
-	return stacksIds, err
-}
-
-//retryUntilCheIsUp is simple retry function that will keep trying the callback function until all
-//retries are exhausted, for each retry it will sleep for sleep seconds
-func retryUntilCheIsUp(retries int, sleep time.Duration, callback func() error) error {
-
-	err := callback()
-
-	if err == nil {
-		return nil
-	}
-
-	if retries--; retries > 0 {
-		time.Sleep(sleep * time.Second)
-		log.Println("Retrying after err:", err)
-		return retryUntilCheIsUp(retries, 10, callback)
-	}
-
-	return fmt.Errorf("After %d seconds, last error: %s", sleep, err)
+func init() {
+	log.SetFormatter(&log.JSONFormatter{})
+	log.SetOutput(os.Stdout)
+	log.SetLevel(log.InfoLevel)
 }
 
 func main() {
 
-	err := retryUntilCheIsUp(maxRetries, retrySleepTime, func() error {
+	var kubeconfig, podNamespace, cheEndpointURI, newStackURL *string
 
-		resp, err := http.Get(cheEndpointURI)
+	home := homedir.HomeDir()
 
-		if err != nil {
-			return err
-		}
+	//fmt.Printf("Home Dir :%s\n", home)
 
-		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusBadRequest {
-			return nil
-		}
+	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
 
-		return fmt.Errorf("Server Error: %v", resp.StatusCode)
-	})
+	//TODO - get the selectors from user
+	podNamespace = flag.String("namespace", "", "The Kubernetes Namespace to use")
+	cheEndpointURI = flag.String("cheEndpointURI", "http://localhost:8080", "The Che EndpointURI")
+	newStackURL = flag.String("newStackURL", "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json", "The New Stacks URL")
+
+	flag.Parse()
+
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 
 	if err != nil {
-		log.Fatal(err)
-	} else {
-		log.Println("Refreshing Stacks")
-		result, err := queryStacks()
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		resultCount := len(result)
-
-		for i := 0; i < resultCount; i++ {
-			oldStack := result[i]
-
-			status, err := deleteStack(result[i])
-
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			if status == http.StatusNoContent {
-				fmt.Printf("Deleted Old Stack: %s \n", oldStack.Name)
-			}
-		}
-		if resultCount <= 0 {
-			fmt.Println("No old Stacks exist")
-		}
-		newStacks, err := newStacks()
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		for i := 0; i < len(newStacks); i++ {
-
-			bStack := newStacks[i]
-			status, err := addNewStack(bStack)
-
-			if err != nil {
-				log.Fatal(err)
-			}
-			var stack stack
-			json.Unmarshal(bStack, &stack)
-			if status == http.StatusCreated {
-				fmt.Printf("Successfully added new stack :%s \n", stack.Name)
-			}
-		}
-
+		log.Fatalf("Unable to build kubeconfig %s", err)
 	}
+
+	if *podNamespace == "" {
+		*podNamespace = defaultNamespaceFromConfig(kubeconfig)
+	}
+
+	log.Infof("Using Namespace: %s", *podNamespace)
+
+	//creates clientset
+	clientset, err := kubernetes.NewForConfig(config)
+
+	if err != nil {
+		log.Fatalf("Unable to build client %s", err)
+	}
+
+	podListWatcher := cache.NewListWatchFromClient(clientset.Core().RESTClient(), "pods",
+		*podNamespace, fields.Everything())
+
+	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+
+	indexer, informer := cache.NewIndexerInformer(podListWatcher, &v1.Pod{}, 0, cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			key, err := cache.MetaNamespaceKeyFunc(obj)
+			if err == nil {
+				if che.IsChePod(obj) {
+					log.Infof("Adding Pod %s to queue", key)
+					queue.Add(key)
+				}
+			}
+		},
+		UpdateFunc: func(obj, newObj interface{}) {
+			key, err := cache.MetaNamespaceKeyFunc(newObj)
+			if err == nil {
+				if che.IsChePod(newObj) {
+					log.Infof("Updating Pod %s to queue", key)
+					queue.Add(key)
+				}
+			}
+		},
+		DeleteFunc: func(obj interface{}) {
+			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+			if err == nil {
+				log.Infof("Deleteing Pod %s from queue", key)
+				queue.Add(key)
+			}
+		},
+	}, cache.Indexers{})
+
+	//create controller
+	controller := che.NewCheController(indexer, informer, queue, *cheEndpointURI, *newStackURL)
+
+	indexer.Add(&v1.Pod{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Namespace: *podNamespace,
+			Labels: map[string]string{
+				"deploymentconfig": "che",
+			},
+		},
+	})
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	go controller.Run(1, stopCh)
+
+	select {}
+}
+
+//defaultNamespaceFromConfig detect the namespace from currentContext
+func defaultNamespaceFromConfig(kubeconfig *string) string {
+	config, err := clientcmd.LoadFromFile(*kubeconfig)
+	if err != nil {
+		log.Errorf("Unable to get NS from context of config %s \n", err)
+	}
+	return strings.Split(config.CurrentContext, "/")[0]
 }
