@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -199,26 +198,4 @@ func (c *Config) RefreshStacks() {
 			log.Infof("Successfully added new stack :%s", stack.Name)
 		}
 	}
-}
-
-//TODO not sure we need this, remove it once done
-//retryUntilCheIsUp is simple retry function that will keep trying the callback function until all
-//retries are exhausted, for each retry it will sleep for sleep seconds
-func retryUntilCheIsUp(retries int, sleep int, callback func() error) error {
-
-	err := callback()
-
-	if err == nil {
-		return nil
-	}
-
-	if retries--; retries > 0 {
-		time.Sleep(time.Duration(sleep) * time.Second)
-		log.Println("Retrying after err:", err)
-		return retryUntilCheIsUp(retries, sleep, callback)
-	}
-
-	log.Errorf("After %d retries, last error: %s", retries, err)
-
-	return nil
 }
