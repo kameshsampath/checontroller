@@ -1,3 +1,5 @@
 vendor
 golib
 .vscode
+bazel-*
+example

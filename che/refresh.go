@@ -105,7 +105,14 @@ func (c *Config) QueryStacks() ([]Stack, error) {
 
 	resp, err := cheClient.Do(req)
 
+	if err != nil {
+		log.Errorf("%s", err)
+	}
+
 	if err == nil && resp != nil {
+
+		log.Infoln("Querying Existing Stacks")
+
 		stackJSON, err := ioutil.ReadAll(resp.Body)
 
 		if err != nil {
@@ -125,7 +132,7 @@ func (c *Config) QueryStacks() ([]Stack, error) {
 //RefreshStacks does refreshing of stacks once ChePod is up
 func (c *Config) RefreshStacks() {
 
-	log.Infoln("Refreshing Stacks")
+	log.Infof("Refreshing Stacks Che Endpoint URI: %s", c.CheEndpointURI)
 
 	result, err := c.QueryStacks()
 
@@ -168,7 +175,7 @@ func (c *Config) RefreshStacks() {
 		var stack Stack
 		json.Unmarshal(bStack, &stack)
 		if status == http.StatusCreated {
-			log.Infof("Successfully added new stack :%s \n", stack.Name)
+			log.Infof("Successfully added new stack :%s", stack.Name)
 		}
 	}
 }

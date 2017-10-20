@@ -1,10 +1,12 @@
-package: github.com/kameshsampath/che-stack-refresher
+package: github.com/kameshsampath/checontroller
 import: 
-- package: github.com/mitchellh/go-homedir
+- package: k8s.io/apimachinery
+  version: 1fd2e63a9a370677308a42f24fd40c86438afddf
 - package: k8s.io/client-go
-  version: v3.0.0
-- package: github.com/davecgh/go-spew
-  version: v1.1.0
+  version: ^4.0.0
 - package: github.com/sirupsen/logrus
   version: ^1.0.3
-  
+# - package: github.com/openshift/origin
+#  version: v3.6.0
+#  subpackages:
+#    - pkg/client

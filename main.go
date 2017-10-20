@@ -22,10 +22,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"k8s.io/client-go/rest"
+
 	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/util/workqueue"
 
-	"github.com/kameshsampath/che-stack-refresher/che"
+	"github.com/kameshsampath/checontroller/che"
 
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/kubernetes"
@@ -47,6 +49,10 @@ func main() {
 
 	var kubeconfig, podNamespace, cheEndpointURI, newStackURL *string
 
+	var incluster *bool
+
+	var clientset *kubernetes.Clientset
+
 	home := homedir.HomeDir()
 
 	//fmt.Printf("Home Dir :%s\n", home)
@@ -54,30 +60,42 @@ func main() {
 	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
 
 	//TODO - get the selectors from user
+	incluster = flag.Bool("incluster", false, "Whether the application is deployed inside Kubernetes cluster or outside")
 	podNamespace = flag.String("namespace", "", "The Kubernetes Namespace to use")
-	cheEndpointURI = flag.String("cheEndpointURI", "http://localhost:8080", "The Che EndpointURI")
+	cheEndpointURI = flag.String("cheEndpointURI", "http://che-host:8080", "The Che EndpointURI")
 	newStackURL = flag.String("newStackURL", "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json", "The New Stacks URL")
 
 	flag.Parse()
 
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if *incluster {
+		log.Infoln("Accessing from inside cluster")
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			log.Fatalf("Unable to build kubeconfig %s", err)
+		}
+		clientset, err = kubernetes.NewForConfig(config)
+		if err != nil {
+			log.Fatalf("Unable to build client %s", err)
+		}
+		*podNamespace = os.Getenv("KUBERNETES_NAMESPACE")
+	} else {
+		log.Infoln("Accessing from outside cluster")
+		config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 
-	if err != nil {
-		log.Fatalf("Unable to build kubeconfig %s", err)
-	}
-
-	if *podNamespace == "" {
-		*podNamespace = defaultNamespaceFromConfig(kubeconfig)
+		if err != nil {
+			log.Fatalf("Unable to build kubeconfig %s", err)
+		}
+		if *podNamespace == "" {
+			*podNamespace = defaultNamespaceFromConfig(kubeconfig)
+		}
+		//creates clientset
+		clientset, err = kubernetes.NewForConfig(config)
+		if err != nil {
+			log.Fatalf("Unable to build client %s", err)
+		}
 	}
 
 	log.Infof("Using Namespace: %s", *podNamespace)
-
-	//creates clientset
-	clientset, err := kubernetes.NewForConfig(config)
-
-	if err != nil {
-		log.Fatalf("Unable to build client %s", err)
-	}
 
 	podListWatcher := cache.NewListWatchFromClient(clientset.Core().RESTClient(), "pods",
 		*podNamespace, fields.Everything())

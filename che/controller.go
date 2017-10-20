@@ -120,13 +120,35 @@ func (c *Controller) refreshStacks(key string) error {
 			for _, containers := range pod.Status.ContainerStatuses {
 				if "che" == containers.Name && containers.Ready {
 					log.Infoln("Starting to refresh stacks ..")
-					log.Infof("%s", c.refresher.CheEndpointURI)
+					c.refresher.EndpointURI(pod)
 					c.refresher.RefreshStacks()
 				}
 			}
 		}
 	}
 	return nil
+}
+
+//EndpointURI helps is computing the URL if not provided via CLI
+func (config *Config) EndpointURI(pod *v1.Pod) string {
+	appNS := pod.ObjectMeta.Namespace
+	appHostIP := pod.Status.HostIP
+
+	var appName string
+
+	if val, exists := pod.Labels["application"]; exists {
+		appName = val
+	} else {
+		if val, exists := pod.Labels["app"]; exists {
+			appName = val
+		}
+	}
+
+	//set it back to the config
+	config.CheEndpointURI = fmt.Sprintf("http://%s-%s.%s.nip.io", appName, appNS,
+		appHostIP)
+
+	return config.CheEndpointURI
 }
 
 //IsChePod verifies if the pod is a che pod wit set of Labels
