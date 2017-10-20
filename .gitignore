@@ -2,3 +2,4 @@ vendor
 golib
 .vscode
 bazel-*
+bin

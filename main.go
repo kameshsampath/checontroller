@@ -62,7 +62,7 @@ func main() {
 	//TODO - get the selectors from user
 	incluster = flag.Bool("incluster", false, "Whether the application is deployed inside Kubernetes cluster or outside")
 	podNamespace = flag.String("namespace", "", "The Kubernetes Namespace to use")
-	cheEndpointURI = flag.String("cheEndpointURI", "http://che-host:8080", "The Che EndpointURI")
+	cheEndpointURI = flag.String("cheEndpointURI", "", "The Che EndpointURI")
 	newStackURL = flag.String("newStackURL", "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json", "The New Stacks URL")
 
 	flag.Parse()
@@ -131,7 +131,7 @@ func main() {
 	}, cache.Indexers{})
 
 	//create controller
-	controller := che.NewCheController(indexer, informer, queue, *cheEndpointURI, *newStackURL)
+	controller := che.NewCheController(indexer, informer, queue, *cheEndpointURI, *newStackURL, *incluster)
 
 	indexer.Add(&v1.Pod{
 		ObjectMeta: meta_v1.ObjectMeta{
@@ -141,12 +141,9 @@ func main() {
 			},
 		},
 	})
-
 	stopCh := make(chan struct{})
 	defer close(stopCh)
-
 	go controller.Run(1, stopCh)
-
 	select {}
 }
 

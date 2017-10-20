@@ -1,0 +1,102 @@
+= checontroller 
+
+Simple utility being built to do some common Eclipse che tasks such as 
+
+* [*] refresh che pods to make it OpenShift compatible, this what currently 
+https://github.com/eclipse/che/blob/master/dockerfiles/init/modules/openshift/files/scripts/replace_stacks.sh[replace_stacks] does
+* [] install che on to OpenShift via cli, the idea of this to build CLI installer for Eclipse that can connect to OpenShift cluster and depoloy che
+* [] undeploy or cleanup, just rollback of install
+
+WARNING: This application is still under development and features might change
+
+== Pre-Requsite
+
+* https://golang.org/[golang] is installed locally
+* Che is deployed and running in OpenShift
+
+== Build 
+
+[source,sh]
+----
+go get  github.com/kameshsampath/checontroller
+cd $GOPATH/src/github.com/kameshsampath/checontroller
+make build <1>
+----
+
+<1> build che controller for your platform
+
+== Usage 
+
+=== Options
+The available options can be seen via `checontroller -h`
+
+[source,sh]
+----
+  -alsologtostderr
+        log to standard error as well as files
+  -cheEndpointURI string
+        The Che EndpointURI usually its computed assuming the deployment name `che`, with namespace being derived form the pod 
+        e.g if namespace is `myproject` and deployment name is `che` - then the che endpoint will be "http://che-myproject.openshiftip.nip.io"
+  -incluster
+        Whether the application is deployed inside Kubernetes cluster or outside
+  -kubeconfig string
+        (optional) absolute path to the kubeconfig file (default "/Users/kameshs/.kube/config")
+  -log_backtrace_at value
+        when logging hits line file:N, emit a stack trace
+  -log_dir string
+        If non-empty, write log files in this directory
+  -logtostderr
+        log to standard error instead of files
+  -namespace string
+        The Kubernetes Namespace to use
+  -newStackURL string
+        The New Stacks URL (default "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json")
+  -stderrthreshold value
+        logs at or above this threshold go to stderr
+  -v value
+        log level for V logs
+  -vmodule value
+        comma-separated list of pattern=N settings for file-filtered logging
+
+----
+
+=== Out of OpenShift Cluster
+
+Usually it can be run out of openshift cluster like,
+
+[source,sh]
+----
+./checontroller 
+---
+(OR)
+[source,sh]
+----
+./checontroller -cheEndpointURI="http://example.com/" -newStackURL="http://demo.example/mystack.json" -namespace="default"
+---
+
+NOTE: The application will by default run as daemon always, so if you wish to quit it run CTRL + C 
+
+=== In OpenShift Cluster
+
+[source,sh]
+----
+git clone https://github.com/kameshsampath/checontroller
+make docker <1>
+oc apply -f example/app.yaml <2>
+----
+
+<1>  build the docker image 
+<2> Deploy the application  in OpenShift, you see the logs of the `checontroller` deployment in OpenShift for whats happening
+
+This will wait/scan for all available che pods,and fire REST calls to refresh the stack.
+
+[IMPORTANT]
+====
+The pod scanning is selected based on Pod labels
+
+* deploymentconfig=che
+* app=che
+* application=che
+
+So when you deploy che, be sure to add these labels to the deployment/pod
+====

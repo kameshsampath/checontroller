@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: DeploymentConfig
+metadata:
+  annotations: []
+  labels:
+    app: checontroller
+    application: checontroller
+  name: checontroller
+spec:
+  replicas: 1
+  selector:
+    app: checontroller
+  strategy:
+    activeDeadlineSeconds: 21600
+    resources: {}
+    rollingParams:
+      intervalSeconds: 1
+      maxSurge: 0
+      maxUnavailable: 25%
+      timeoutSeconds: 600
+      updatePeriodSeconds: 1
+    type: Rolling
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: checontroller
+    spec:
+      containers:
+        - env:
+            - name: KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          image: kameshsampath/checontroller:dev
+          imagePullPolicy: IfNotPresent       
+          name: checontroller
+          ports: []
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: che
+      serviceAccountName: che
+      terminationGracePeriodSeconds: 60
+  test: false
+  triggers:
+     - type: ConfigChange

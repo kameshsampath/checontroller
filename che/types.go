@@ -37,5 +37,6 @@ type Controller struct {
 	indexer   cache.Indexer
 	informer  cache.Controller
 	queue     workqueue.RateLimitingInterface
+	incluster bool
 	refresher *Config
 }

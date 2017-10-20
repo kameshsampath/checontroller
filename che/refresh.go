@@ -47,7 +47,13 @@ func (c *Config) AddNewStack(stack json.RawMessage) (int, error) {
 	cheClient := http.Client{}
 	resp, err := cheClient.Do(req)
 
-	return resp.StatusCode, err
+	log.Debugf("Response : %#v", resp)
+
+	if resp != nil && err == nil {
+		return resp.StatusCode, err
+	} else {
+		return 503, err
+	}
 }
 
 //Delete a Stack based on the stack ID
@@ -62,13 +68,21 @@ func (stack *Stack) Delete(c *Config) (int, error) {
 	cheClient := http.Client{}
 	resp, err := cheClient.Do(req)
 
-	return resp.StatusCode, err
+	log.Debugf("Response : %#v", resp)
+
+	if resp != nil && err == nil {
+		return resp.StatusCode, err
+	} else {
+		return 503, err
+	}
 }
 
 //NewStacks fetches new stacks from remote url
 func (c *Config) NewStacks() ([]json.RawMessage, error) {
 	req, err := http.NewRequest(http.MethodGet, c.NewStackURL, nil)
 	req.Header.Set("Accept", "application/json")
+
+	log.Infof("Fetching new stacks from %s", c.NewStackURL)
 
 	if err != nil {
 		return nil, fmt.Errorf("%s", err)
@@ -78,16 +92,21 @@ func (c *Config) NewStacks() ([]json.RawMessage, error) {
 
 	resp, err := cheClient.Do(req)
 
+	log.Debugf("Response : %#v", resp)
+
 	var newStacks []json.RawMessage
 
-	stackJSON, err := ioutil.ReadAll(resp.Body)
+	if resp != nil && err == nil {
 
-	if err != nil {
-		return nil, fmt.Errorf("%s", err)
+		stackJSON, err := ioutil.ReadAll(resp.Body)
+
+		if err != nil {
+			return nil, fmt.Errorf("%s", err)
+		}
+
+		json.Unmarshal(stackJSON, &newStacks)
+
 	}
-
-	json.Unmarshal(stackJSON, &newStacks)
-
 	return newStacks, err
 }
 
@@ -108,6 +127,8 @@ func (c *Config) QueryStacks() ([]Stack, error) {
 	if err != nil {
 		log.Errorf("%s", err)
 	}
+
+	log.Debugf("Response : %#v", resp)
 
 	if err == nil && resp != nil {
 
