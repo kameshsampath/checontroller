@@ -66,9 +66,6 @@ func init() {
 	refreshCmd.Flags().StringVarP(&cheEndpointURI, "endpointURI", "e", "http://localhost:8080", "The Che endpoint URI")
 	refreshCmd.Flags().StringVarP(&newStackURL, "newStackURL", "n", "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json", "The JSON from where to load the new stacks")
 
-	log.SetFormatter(&log.JSONFormatter{})
-	log.SetOutput(os.Stdout)
-	log.SetLevel(log.InfoLevel)
 }
 
 //refresh will handle the Che StackRefreshing calls

@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	log "github.com/sirupsen/logrus"
 
@@ -29,12 +30,10 @@ var cfgFile string
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
-	Use:   "chectl",
-	Short: "Chectl is a simple commandline utility for Eclipse Che",
+	Use:   "checli",
+	Short: "checli is a simple commandline utility for Eclipse Che",
 	Long: `The utility helps is performing few of common operations that can be performed on Eclipse Che via CLI.
-	 For example:
-When you have deployed Eclipse Che on OpenShift, you need to refresh the default stacks to make it OpenShift compatible, to do that just run 
-"chectl refresh".`,
+	 For example: Install Che on to existing OpenShift Cluster using command checli install --openshiftmasterURL http://localhost:9090.`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -53,6 +52,9 @@ func init() {
 	// will be global for your application.
 	RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.chectl.yaml)")
 
+	log.SetFormatter(&log.TextFormatter{FullTimestamp: true, QuoteEmptyFields: true})
+	log.SetOutput(os.Stdout)
+	log.SetLevel(log.InfoLevel)
 }
 
 // initConfig reads in config file and ENV variables if set.
