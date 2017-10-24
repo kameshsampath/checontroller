@@ -1,3 +1,17 @@
+// Copyright © 2017-present Kamesh Sampath  <kamesh.sampath@hotmail.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package install
 
 import (
@@ -56,13 +70,13 @@ var (
 )
 
 //NewInstaller contructs a new installer an
-func NewInstaller(config *rest.Config, namespace string, openshiftType OpenShiftType) *InstallerConfig {
+func NewInstaller(config *rest.Config, namespace, imageTag string, openshiftType OpenShiftType) *InstallerConfig {
 	installer = &InstallerConfig{
 		config:        config,
 		namespace:     namespace,
 		OpenShiftType: openshiftType,
+		ImageTag:      imageTag,
 	}
-
 	return installer
 }
 
@@ -70,7 +84,7 @@ func NewInstaller(config *rest.Config, namespace string, openshiftType OpenShift
 func (ot OpenShiftType) Install() {
 	installer.createCheServiceAccount()
 	installer.createCheRoute()
-
+	installer.createImageStream()
 	//determine the domain
 	domain, _ := util.CheRouteInfo(installer.config, installer.namespace, "che")
 
@@ -80,14 +94,11 @@ func (ot OpenShiftType) Install() {
 	installer.createCheService()
 
 	switch ot {
-	case "osio":
+	case "minishift":
 		//installer.applyQuota()
-	case "ocp":
-		installer.createImageStream()
-	default: // minishift
-		//installer.applyQuota()
-		installer.createImageStream()
 		installer.createRoleBinding()
+	case "ocp":
+		//installer.applyQuota()
 	}
 	installer.createCheDeploymentConfig()
 }
@@ -118,21 +129,21 @@ func (i *InstallerConfig) createImageStream() {
 						"tags":        "java,ide,eclipse,che",
 					},
 					From: &kapi.ObjectReference{
-						Name: "5.18.0-centos",
+						Name: "latest-centos",
 						Kind: "ImageStreamTag",
 					},
 				},
 				{
-					Name: "5.18.0-centos",
+					Name: "latest-centos",
 					Annotations: map[string]string{
-						"openshift.io/display-name": "Eclipse Che Server  5.18.0",
+						"openshift.io/display-name": "Eclipse Che Server Stable Latest",
 						"description":               "Eclipse Che server centos images.",
 						"iconClass":                 "icon-che",
 						"tags":                      "java,ide,eclipse,che",
-						"version":                   "5.18.0-centos",
+						"version":                   "5.x-centos",
 					},
 					From: &kapi.ObjectReference{
-						Name: "eclipse/che-server:5.18.0-centos",
+						Name: "eclipse/che-server:latest-centos",
 						Kind: "DockerImage",
 					},
 				},
@@ -152,7 +163,7 @@ func (i *InstallerConfig) createImageStream() {
 				{
 					Name: "nightly-centos",
 					Annotations: map[string]string{
-						"openshift.io/display-name": "Eclipse Che Server 5.19.0-SNAPSHOT",
+						"openshift.io/display-name": "Eclipse Che Server 5.x.x-SNAPSHOT",
 						"description":               "Eclipse Che server nightly centos images.",
 						"iconClass":                 "icon-che",
 						"tags":                      "java,ide,eclipse,che",
@@ -410,7 +421,7 @@ func (i *InstallerConfig) createCheDeploymentConfig() {
 					From: kapi.ObjectReference{
 						Kind:      "ImageStreamTag",
 						Namespace: "openshift",
-						Name:      "che-server:latest",
+						Name:      fmt.Sprintf(`che-server:%s`, i.ImageTag),
 					},
 				},
 			},
@@ -571,30 +582,23 @@ func (ot OpenShiftType) configMap(project, domain string) map[string]string {
 		"log-level":                                                      "INFO",
 		"docker-connector":                                               "openshift",
 		"port":                                                           "8080",
-		"remote-debugging-enabled":                                       "false",
-		"che-oauth-github-forceactivation":                               "true",
-		"workspaces-memory-limit":                                        "1900Mi",
-		"workspaces-memory-request":                                      "1100Mi",
-		"enable-workspaces-autostart":                                    "false",
-		"che-server-java-opts":                                           "-XX:+UseG1GC -XX:+UseStringDeduplication -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:MaxRAM=600m -Xms256m",
-		"che-workspaces-java-opts":                                       "-XX:+UseG1GC -XX:+UseStringDeduplication -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:MaxRAM=1200m -Xms256m",
-		"che-openshift-secure-routes":                                    "true",
-		"che-secure-external-urls":                                       "true",
-		"che-server-timeout-ms":                                          "3600000",
-		"che-openshift-precreate-subpaths":                               "false",
-		"che-workspace-auto-snapshot":                                    "false",
+		"remote-debugging-enabled":         "false",
+		"che-oauth-github-forceactivation": "true",
+		"workspaces-memory-limit":          "1900Mi",
+		"workspaces-memory-request":        "1100Mi",
+		"enable-workspaces-autostart":      "false",
+		"che-server-java-opts":             "-XX:+UseG1GC -XX:+UseStringDeduplication -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:MaxRAM=600m -Xms256m",
+		"che-workspaces-java-opts":         "-XX:+UseG1GC -XX:+UseStringDeduplication -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:MaxRAM=1200m -Xms256m",
+		"che-openshift-secure-routes":      "true",
+		"che-secure-external-urls":         "true",
+		"che-server-timeout-ms":            "3600000",
+		"che-openshift-precreate-subpaths": "false",
+		"che-workspace-auto-snapshot":      "false",
+		"keycloak-disabled":                "false",
 	}
 
 	switch ot {
-	case "osio":
-		cm["keycloak-oso-endpoint"] = "${KEYCLOAK_OSO_ENDPOINT}"
-		cm["keycloak-github-endpoint"] = "${KEYCLOAK_GITHUB_ENDPOINT}"
-		cm["keycloak-disabled"] = "false"
-	case "ocp":
-		cm["keycloak-oso-endpoint"] = "${KEYCLOAK_OSO_ENDPOINT}"
-		cm["keycloak-github-endpoint"] = "${KEYCLOAK_GITHUB_ENDPOINT}"
-		cm["keycloak-disabled"] = "false"
-	default:
+	case "minishift":
 		cm["che.docker.server_evaluation_strategy.custom.external.protocol"] = "http"
 		cm["che.predefined.stacks.reload_on_start"] = "false"
 		cm["che-openshift-secure-routes"] = "false"
@@ -603,6 +607,10 @@ func (ot OpenShiftType) configMap(project, domain string) map[string]string {
 		cm["keycloak-disabled"] = "true"
 		cm["workspaces-memory-limit"] = "1300Mi"
 		cm["workspaces-memory-request"] = "500Mi"
+	case "ocp":
+		cm["keycloak-oso-endpoint"] = "${KEYCLOAK_OSO_ENDPOINT}"
+		cm["keycloak-github-endpoint"] = "${KEYCLOAK_GITHUB_ENDPOINT}"
+		cm["keycloak-disabled"] = "false"
 	}
 
 	log.Debugf("ConfigMap Data: %s", cm)
@@ -618,18 +626,15 @@ func (ot OpenShiftType) routeSpec() ov1.RouteSpec {
 		}}
 
 	switch ot {
-	case "osio":
-		routeSpec.TLS = &ov1.TLSConfig{
-			InsecureEdgeTerminationPolicy: "Redirect",
-			Termination:                   "edge",
-		}
+	case "minishift":
+		log.Infoln("No Extra Route Config for minishift and default cases")
 	case "ocp":
 		routeSpec.TLS = &ov1.TLSConfig{
 			InsecureEdgeTerminationPolicy: "Redirect",
 			Termination:                   "edge",
 		}
 	default:
-		log.Infoln("No Extra config for minishift and default cases")
+		log.Infoln("No Extra Route Config for minishift and default cases")
 	}
 
 	log.Debugf("Route Spec : %#v", *routeSpec)
@@ -640,12 +645,11 @@ func (ot OpenShiftType) routeSpec() ov1.RouteSpec {
 //Customized Environment Variables for each OpenShiftType
 func (ot OpenShiftType) cheEnvVars() []kapi.EnvVar {
 	switch ot {
-	case "osio":
-		return OSIOCheEnvVars()
+	case "minishift":
+		return CheEnvVars()
 	case "ocp":
 		return OCPCheEnvVars()
 	default:
-		log.Infoln("Keycloak will be disabled for default cases like minishift")
 		return CheEnvVars()
 	}
 }

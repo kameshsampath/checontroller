@@ -1,3 +1,16 @@
+// Copyright © 2017-present Kamesh Sampath  <kamesh.sampath@hotmail.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 package util
 
 import (
@@ -8,12 +21,13 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"fmt"
-	routeclient "github.com/openshift/origin/pkg/route/generated/clientset"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/pkg/api/v1"
 	"os"
 	"os/signal"
 	"syscall"
+
+	routeclient "github.com/openshift/origin/pkg/route/generated/clientset"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/pkg/api/v1"
 )
 
 //DefaultNamespaceFromConfig detect the namespace from current kuberenetes context
@@ -72,8 +86,8 @@ func CheRouteInfo(config *rest.Config, namespace string, routeName string) (stri
 		scheme = "https"
 	}
 
-	log.Infof("Domain %s", domain)
-	log.Infof("Route %s", fmt.Sprintf("%s://%s", scheme, host))
+	log.Debugf("Domain %s", domain)
+	log.Debugf("Route %s", fmt.Sprintf("%s://%s", scheme, host))
 
 	return domain, fmt.Sprintf("%s://%s", scheme, host)
 

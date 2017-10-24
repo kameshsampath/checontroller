@@ -1,3 +1,16 @@
+// Copyright © 2017-present Kamesh Sampath  <kamesh.sampath@hotmail.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 package cmd
 
 import (
@@ -23,23 +36,22 @@ var (
 		Long:  `Installs and Configure Che on OpenShift`,
 		Run:   install,
 	}
-	newStacksURL  string
-	refreshStacks bool
-	minishift     bool
-	ocp           bool
-	osio          bool
+	newStacksURL    string
+	imageTag        string
+	refreshStacks   bool
+	openshiftFlavor string
 )
 
 func init() {
 	RootCmd.AddCommand(installCmd)
 
-	installCmd.Flags().BoolVarP(&refreshStacks, "refreshstacks", "r", true, "Refresh the stack to make it OpenShift compatible")
-	installCmd.Flags().BoolVarP(&minishift, "minishift", "m", false, "Is OpenShift cluster running on minishift")
-	installCmd.Flags().BoolVarP(&osio, "osio", "o", false, "Is OpenShift cluster running on openshift.io")
-	installCmd.Flags().BoolVarP(&ocp, "ocp", "d", false, "Is OpenShift cluster running on OpenShift Container Platform")
+	installCmd.Flags().BoolVarP(&refreshStacks, "refreshstacks", "r", true, `Refresh the stack to make it OpenShift compatible`)
+	installCmd.Flags().StringVarP(&imageTag, "imagetag", "t", "latest", `The Che Image tag to use with che-server image stream,
+		 possible values are latest, nightly `)
+	installCmd.Flags().StringVarP(&openshiftFlavor, "flavor", "f", "minishift", `OpenShift flavor to use valid values are minishift,ocp`)
 	//TODO need to move to configmap
 	installCmd.Flags().StringVarP(&newStacksURL, "newStackURL", "n", "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json",
-		"The JSON from where to load the new stacks during refresh")
+		`The new stacks JSON that will replace default stacks when deploying on OpenShift`)
 }
 
 func install(cmd *cobra.Command, args []string) {
@@ -65,21 +77,19 @@ func install(cmd *cobra.Command, args []string) {
 
 	var openShiftType cheinstall.OpenShiftType
 
-	if minishift {
+	if "minishift" == openshiftFlavor {
 		openShiftType = "minishift"
-	} else if ocp {
-		openShiftType = "ocp"
-	} else if osio {
+	} else if "ocp" == openshiftFlavor {
 		openShiftType = "ocp"
 	}
 
 	namespace := util.DefaultNamespaceFromConfig(kubeconfig)
 
-	i := cheinstall.NewInstaller(config, namespace, openShiftType)
+	i := cheinstall.NewInstaller(config, namespace, imageTag, openShiftType)
 
 	i.OpenShiftType.Install()
 
-	_,cheEndpointURI := util.CheRouteInfo(config, namespace, "che")
+	_, cheEndpointURI := util.CheRouteInfo(config, namespace, "che")
 
 	if refreshStacks {
 		log.Infoln("Refreshing Stacking post install")
@@ -95,5 +105,5 @@ func install(cmd *cobra.Command, args []string) {
 		cher.TickAndRefresh(c)
 	}
 
-	log.Infof("Che is available at: %s",cheEndpointURI)
+	log.Infof("Che is available at: %s", cheEndpointURI)
 }

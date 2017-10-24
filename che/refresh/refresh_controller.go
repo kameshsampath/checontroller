@@ -1,18 +1,17 @@
-/*
-Copyright 2017 Kamesh Sampath<kamesh.sampath@hotmail.com>
+// Copyright © 2017-present Kamesh Sampath  <kamesh.sampath@hotmail.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
 package refresh
 
 import (
@@ -110,6 +109,7 @@ func (c *Controller) Run(nofThreads int, stopCh chan struct{}) {
 	}
 
 	<-stopCh
+
 	log.Infoln("Stopping Che Refresher")
 }
 
@@ -165,11 +165,12 @@ func (c *Controller) refreshStacks(key string) error {
 		log.Debugf("Pod :%s has state :%s", pod.ObjectMeta.Name, pod.Status.Phase)
 		if pod.Status.Phase == "Running" {
 			for _, container := range pod.Status.ContainerStatuses {
-				if "che" == container.Name && container.Ready  {
-					if (c.incluster) {
+				if "che" == container.Name && container.Ready {
+					time.Sleep(15 * time.Second) //time for ws agent to warmup
+					if c.incluster {
 						c.refresher.endpointURI(c.incluster, pod)
 						c.refresher.RefreshStacks()
-					}else{
+					} else {
 						c.refresher.RefreshStacks()
 					}
 					c.Done = true && c.informer.HasSynced()
