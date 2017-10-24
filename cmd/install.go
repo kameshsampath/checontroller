@@ -7,13 +7,15 @@ import (
 	cheinstall "github.com/kameshsampath/checontroller/che/install"
 	"github.com/kameshsampath/checontroller/util"
 
+	cher "github.com/kameshsampath/checontroller/che/refresh"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
 
-// installCmd represents the refresh command
+// installCmd represents the install command
 var (
 	installCmd = &cobra.Command{
 		Use:   "install",
@@ -31,7 +33,7 @@ var (
 func init() {
 	RootCmd.AddCommand(installCmd)
 
-	installCmd.Flags().BoolVarP(&refreshStacks, "refreshstacks", "r", false, "Refresh the stack to make it OpenShift compatible")
+	installCmd.Flags().BoolVarP(&refreshStacks, "refreshstacks", "r", true, "Refresh the stack to make it OpenShift compatible")
 	installCmd.Flags().BoolVarP(&minishift, "minishift", "m", false, "Is OpenShift cluster running on minishift")
 	installCmd.Flags().BoolVarP(&osio, "osio", "o", false, "Is OpenShift cluster running on openshift.io")
 	installCmd.Flags().BoolVarP(&ocp, "ocp", "d", false, "Is OpenShift cluster running on OpenShift Container Platform")
@@ -76,4 +78,22 @@ func install(cmd *cobra.Command, args []string) {
 	i := cheinstall.NewInstaller(config, namespace, openShiftType)
 
 	i.OpenShiftType.Install()
+
+	_,cheEndpointURI := util.CheRouteInfo(config, namespace, "che")
+
+	if refreshStacks {
+		log.Infoln("Refreshing Stacking post install")
+
+		log.Infof("Using Che Endpoint URI :%s", cheEndpointURI)
+		clientset, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			log.Fatalf("Unable to build client for refresh %s", err)
+		}
+
+		c := cher.NewCheController(cheEndpointURI, namespace, newStacksURL, false, clientset.CoreV1Client.RESTClient())
+
+		cher.TickAndRefresh(c)
+	}
+
+	log.Infof("Che is available at: %s",cheEndpointURI)
 }

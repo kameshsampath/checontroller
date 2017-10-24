@@ -29,6 +29,7 @@ import (
 
 	coretypes "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/kameshsampath/checontroller/util"
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 )
 
@@ -67,38 +68,28 @@ func NewInstaller(config *rest.Config, namespace string, openshiftType OpenShift
 
 //Install - starts the installation process of Che
 func (ot OpenShiftType) Install() {
+	installer.createCheServiceAccount()
+	installer.createCheRoute()
+
+	//determine the domain
+	domain, _ := util.CheRouteInfo(installer.config, installer.namespace, "che")
+
+	installer.createCheConfigMap(installer.namespace, domain)
+	installer.createCheDataPVC()
+	installer.createCheWorkspacePVC()
+	installer.createCheService()
+
 	switch ot {
 	case "osio":
-		installer.createCheServiceAccount()
-		installer.createCheConfigMap()
-		installer.createCheDataPVC()
-		installer.createCheWorkspacePVC()
-		installer.createCheRoute()
-		installer.createCheService()
-		installer.createCheDeploymentConfig()
 		//installer.applyQuota()
 	case "ocp":
-		installer.createCheServiceAccount()
 		installer.createImageStream()
-		installer.createRoleBinding()
-		installer.createCheConfigMap()
-		installer.createCheDataPVC()
-		installer.createCheWorkspacePVC()
-		installer.createCheRoute()
-		installer.createCheService()
-		installer.createCheDeploymentConfig()
-	default:
-		installer.createCheServiceAccount()
-		installer.createRoleBinding()
-		installer.createImageStream()
+	default: // minishift
 		//installer.applyQuota()
-		installer.createCheConfigMap()
-		installer.createCheDataPVC()
-		installer.createCheWorkspacePVC()
-		installer.createCheRoute()
-		installer.createCheService()
-		installer.createCheDeploymentConfig()
+		installer.createImageStream()
+		installer.createRoleBinding()
 	}
+	installer.createCheDeploymentConfig()
 }
 
 //Creates Eclipse Che Server Image Stream
@@ -238,7 +229,7 @@ func (i *InstallerConfig) createRoleBinding() {
 }
 
 //createConfigMap Creates the che configMap
-func (i *InstallerConfig) createCheConfigMap() {
+func (i *InstallerConfig) createCheConfigMap(project, domain string) {
 	clientset, err := kubernetes.NewForConfig(i.config)
 
 	if err != nil {
@@ -254,7 +245,7 @@ func (i *InstallerConfig) createCheConfigMap() {
 				"app": "che",
 			},
 		},
-		Data: i.OpenShiftType.configMap(),
+		Data: i.OpenShiftType.configMap(project, domain),
 	})
 
 	if err != nil {
@@ -565,9 +556,9 @@ func objectExists(object, name string, err error) bool {
 }
 
 // build the Che configmap based on the OpenShiftType
-func (ot OpenShiftType) configMap() map[string]string {
+func (ot OpenShiftType) configMap(project, domain string) map[string]string {
 	cm := map[string]string{
-		"hostname-http":                                                  fmt.Sprintf("%s-che.%s", "", ""),
+		"hostname-http":                                                  fmt.Sprintf(`%s-che.%s`, project, domain),
 		"workspace-storage":                                              "/home/user/che/workspaces",
 		"workspace-storage-create-folders":                               "false",
 		"local-conf-dir":                                                 "/etc/conf",
@@ -580,18 +571,18 @@ func (ot OpenShiftType) configMap() map[string]string {
 		"log-level":                                                      "INFO",
 		"docker-connector":                                               "openshift",
 		"port":                                                           "8080",
-		"remote-debugging-enabled":         "false",
-		"che-oauth-github-forceactivation": "true",
-		"workspaces-memory-limit":          "1900Mi",
-		"workspaces-memory-request":        "1100Mi",
-		"enable-workspaces-autostart":      "false",
-		"che-server-java-opts":             "-XX:+UseG1GC -XX:+UseStringDeduplication -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:MaxRAM=600m -Xms256m",
-		"che-workspaces-java-opts":         "-XX:+UseG1GC -XX:+UseStringDeduplication -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:MaxRAM=1200m -Xms256m",
-		"che-openshift-secure-routes":      "true",
-		"che-secure-external-urls":         "true",
-		"che-server-timeout-ms":            "3600000",
-		"che-openshift-precreate-subpaths": "false",
-		"che-workspace-auto-snapshot":      "false",
+		"remote-debugging-enabled":                                       "false",
+		"che-oauth-github-forceactivation":                               "true",
+		"workspaces-memory-limit":                                        "1900Mi",
+		"workspaces-memory-request":                                      "1100Mi",
+		"enable-workspaces-autostart":                                    "false",
+		"che-server-java-opts":                                           "-XX:+UseG1GC -XX:+UseStringDeduplication -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:MaxRAM=600m -Xms256m",
+		"che-workspaces-java-opts":                                       "-XX:+UseG1GC -XX:+UseStringDeduplication -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:MaxRAM=1200m -Xms256m",
+		"che-openshift-secure-routes":                                    "true",
+		"che-secure-external-urls":                                       "true",
+		"che-server-timeout-ms":                                          "3600000",
+		"che-openshift-precreate-subpaths":                               "false",
+		"che-workspace-auto-snapshot":                                    "false",
 	}
 
 	switch ot {
@@ -604,7 +595,14 @@ func (ot OpenShiftType) configMap() map[string]string {
 		cm["keycloak-github-endpoint"] = "${KEYCLOAK_GITHUB_ENDPOINT}"
 		cm["keycloak-disabled"] = "false"
 	default:
+		cm["che.docker.server_evaluation_strategy.custom.external.protocol"] = "http"
+		cm["che.predefined.stacks.reload_on_start"] = "false"
+		cm["che-openshift-secure-routes"] = "false"
+		cm["che-secure-external-urls"] = "false"
+		cm["che-openshift-precreate-subpath"] = "true"
 		cm["keycloak-disabled"] = "true"
+		cm["workspaces-memory-limit"] = "1300Mi"
+		cm["workspaces-memory-request"] = "500Mi"
 	}
 
 	log.Debugf("ConfigMap Data: %s", cm)

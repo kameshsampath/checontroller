@@ -16,37 +16,20 @@ package cmd
 
 import (
 	"flag"
-	"os"
-	"path/filepath"
-	"strings"
-
-	che "github.com/kameshsampath/checontroller/che"
+	cher "github.com/kameshsampath/checontroller/che/refresh"
+	"github.com/kameshsampath/checontroller/util"
 	log "github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/fields"
+	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-	"k8s.io/client-go/util/workqueue"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
-
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"os"
+	"path/filepath"
 )
-
-func init() {
-	log.SetFormatter(&log.JSONFormatter{})
-	log.SetOutput(os.Stdout)
-	log.SetLevel(log.InfoLevel)
-}
 
 // refreshCmd represents the refresh command
 var (
-	flags = pflag.NewFlagSet("", pflag.ExitOnError)
-
 	refreshCmd = &cobra.Command{
 		Use:   "refresh",
 		Short: "Refreshes all the Che stack to make it OpenShift compatible",
@@ -71,13 +54,10 @@ func init() {
 //refresh will handle the Che StackRefreshing calls
 func refresh(cmd *cobra.Command, args []string) {
 
-	log.Infof("Incluster ? %s", incluster)
 	log.Infof("Che  Endpoint URI %s", cheEndpointURI)
 	log.Infof("New Stack URI %s", newStackURL)
 
-	var kubeconfig, podNamespace, cheEndpointURI, newStackURL *string
-
-	var incluster *bool
+	var kubeconfig, podNamespace *string
 
 	var clientset *kubernetes.Clientset
 
@@ -86,13 +66,7 @@ func refresh(cmd *cobra.Command, args []string) {
 	log.Debugf("Home Dir :%s\n", home)
 
 	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-
-	//TODO - get the selectors from user
-	incluster = flag.Bool("incluster", false, "Whether the application is deployed inside Kubernetes cluster or outside")
 	podNamespace = flag.String("namespace", "", "The Kubernetes Namespace to use")
-	cheEndpointURI = flag.String("cheEndpointURI", "", "The Che EndpointURI")
-	newStackURL = flag.String("newStackURL", "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json", "The New Stacks URL")
-
 	flag.Parse()
 
 	if *incluster {
@@ -114,7 +88,7 @@ func refresh(cmd *cobra.Command, args []string) {
 			log.Fatalf("Unable to build kubeconfig %s", err)
 		}
 		if *podNamespace == "" {
-			*podNamespace = defaultNamespaceFromConfig(kubeconfig)
+			*podNamespace = util.DefaultNamespaceFromConfig(kubeconfig)
 		}
 		//creates clientset
 		clientset, err = kubernetes.NewForConfig(config)
@@ -125,61 +99,15 @@ func refresh(cmd *cobra.Command, args []string) {
 
 	log.Infof("Using Namespace: %s", *podNamespace)
 
-	podListWatcher := cache.NewListWatchFromClient(clientset.Core().RESTClient(), "pods",
-		*podNamespace, fields.Everything())
-
-	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-
-	indexer, informer := cache.NewIndexerInformer(podListWatcher, &v1.Pod{}, 0, cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			key, err := cache.MetaNamespaceKeyFunc(obj)
-			if err == nil {
-				if che.IsChePod(obj) {
-					log.Infof("Adding Pod %s to queue", key)
-					queue.Add(key)
-				}
-			}
-		},
-		UpdateFunc: func(obj, newObj interface{}) {
-			key, err := cache.MetaNamespaceKeyFunc(newObj)
-			if err == nil {
-				if che.IsChePod(newObj) {
-					log.Infof("Updating Pod %s to queue", key)
-					queue.Add(key)
-				}
-			}
-		},
-		DeleteFunc: func(obj interface{}) {
-			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
-			if err == nil {
-				log.Infof("Deleteing Pod %s from queue", key)
-				queue.Add(key)
-			}
-		},
-	}, cache.Indexers{})
-
 	//create controller
-	controller := che.NewCheController(indexer, informer, queue, *cheEndpointURI, *newStackURL, *incluster)
+	c := cher.NewCheController(cheEndpointURI, *podNamespace, newStackURL,
+		*incluster, clientset.CoreV1Client.RESTClient())
 
-	indexer.Add(&v1.Pod{
-		ObjectMeta: meta_v1.ObjectMeta{
-			Namespace: *podNamespace,
-			Labels: map[string]string{
-				"deploymentconfig": "che",
-			},
-		},
-	})
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	go controller.Run(1, stopCh)
-	select {}
-}
-
-//defaultNamespaceFromConfig detect the namespace from currentContext
-func defaultNamespaceFromConfig(kubeconfig *string) string {
-	config, err := clientcmd.LoadFromFile(*kubeconfig)
-	if err != nil {
-		log.Errorf("Unable to get NS from context of config %s \n", err)
+	//Daemon mode
+	if *incluster {
+		cher.KeepAlive(c)
+	} else { //Poller mode
+		cher.TickAndRefresh(c)
 	}
-	return strings.Split(config.CurrentContext, "/")[0]
+
 }

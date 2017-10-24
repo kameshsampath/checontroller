@@ -30,10 +30,10 @@ var cfgFile string
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
-	Use:   "checli",
-	Short: "checli is a simple commandline utility for Eclipse Che",
+	Use:   "chectl",
+	Short: "chectl is a simple commandline utility for Eclipse Che",
 	Long: `The utility helps is performing few of common operations that can be performed on Eclipse Che via CLI.
-	 For example: Install Che on to existing OpenShift Cluster using command checli install --openshiftmasterURL http://localhost:9090.`,
+For example: Install Che on to existing OpenShift Cluster using command chectl install`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

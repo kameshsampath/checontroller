@@ -13,7 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package che
+package refresh
 
 import (
 	"k8s.io/client-go/tools/cache"
@@ -39,4 +39,5 @@ type Controller struct {
 	queue     workqueue.RateLimitingInterface
 	incluster bool
 	refresher *Config
+	Done bool
 }

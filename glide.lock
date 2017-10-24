@@ -1,5 +1,5 @@
-hash: 6120ddd28f9ea2d12b8dc86e6669c0f8c395317d77ed70b1ceb1da19ce361c16
-updated: 2017-10-22T17:20:54.85569634+05:30
+hash: 0b99130b36a754f08fceb3f8d648ea2e63e716a73c3a1306612c68b55856ee55
+updated: 2017-10-24T07:49:38.498587223+05:30
 imports:
 - name: github.com/blang/semver
   version: b38d23b8782a487059e8fc8773e9a5b228a77cb6
@@ -8,16 +8,58 @@ imports:
   subpackages:
   - spew
 - name: github.com/docker/distribution
-  version: cd27f179f2c10c5d300e6d09025b538c475b0d51
+  version: ""
   subpackages:
+  - configuration
+  - context
   - digest
+  - digestset
+  - health
+  - health/checks
+  - manifest
+  - manifest/manifestlist
+  - manifest/schema1
+  - manifest/schema2
+  - notifications
   - reference
+  - registry/api/errcode
+  - registry/api/v2
+  - registry/auth
+  - registry/auth/htpasswd
+  - registry/auth/token
+  - registry/client
+  - registry/client/auth
+  - registry/client/auth/challenge
+  - registry/client/transport
+  - registry/handlers
+  - registry/middleware/registry
+  - registry/middleware/repository
+  - registry/proxy
+  - registry/proxy/scheduler
+  - registry/storage
+  - registry/storage/cache
+  - registry/storage/cache/memory
+  - registry/storage/cache/redis
+  - registry/storage/driver
+  - registry/storage/driver/azure
+  - registry/storage/driver/base
+  - registry/storage/driver/factory
+  - registry/storage/driver/filesystem
+  - registry/storage/driver/gcs
+  - registry/storage/driver/inmemory
+  - registry/storage/driver/middleware
+  - registry/storage/driver/middleware/cloudfront
+  - registry/storage/driver/oss
+  - registry/storage/driver/s3-aws
+  - registry/storage/driver/swift
+  - uuid
+  - version
 - name: github.com/emicklei/go-restful
   version: ff4f55a206334ef123e4f79bbf348980da81ca46
   subpackages:
   - log
 - name: github.com/emicklei/go-restful-swagger12
-  version: dcef7f55730566d41eae5db10e7d6981829720f6
+  version: ""
 - name: github.com/fsnotify/fsnotify
   version: f12c6236fe7b5cf6bcf30e5935d08cb079d78334
 - name: github.com/ghodss/yaml
@@ -30,6 +72,8 @@ imports:
   version: 13c6e3589ad90f49bd3e3bbe2c2cb3d7a4142272
 - name: github.com/go-openapi/loads
   version: 18441dfa706d924a39a030ee2c3b1d8d81917b38
+  subpackages:
+  - fmts
 - name: github.com/go-openapi/spec
   version: 6aced65f8501fe1217321abf0749d354824ba2ff
 - name: github.com/go-openapi/swag
@@ -37,8 +81,31 @@ imports:
 - name: github.com/gogo/protobuf
   version: c0656edd0d9eab7c66d1eb0c568f9039345796f7
   subpackages:
+  - gogoproto
+  - plugin/compare
+  - plugin/defaultcheck
+  - plugin/description
+  - plugin/embedcheck
+  - plugin/enumstringer
+  - plugin/equal
+  - plugin/face
+  - plugin/gostring
+  - plugin/marshalto
+  - plugin/oneofcheck
+  - plugin/populate
+  - plugin/size
+  - plugin/stringer
+  - plugin/testgen
+  - plugin/union
+  - plugin/unmarshal
   - proto
+  - protoc-gen-gogo/descriptor
+  - protoc-gen-gogo/generator
+  - protoc-gen-gogo/grpc
+  - protoc-gen-gogo/plugin
   - sortkeys
+  - vanity
+  - vanity/command
 - name: github.com/golang/glog
   version: 44145f04b68cf362d9c4df2182967c2275eaefed
 - name: github.com/google/gofuzz
@@ -71,25 +138,39 @@ imports:
 - name: github.com/magiconair/properties
   version: 61b492c03cf472e0c6419be5899b8e0dc28b1b88
 - name: github.com/mailru/easyjson
-  version: d5b7844b561a7bc640052f1b935f7b800330d7e0
+  version: e978125a7e335d8f4db746a9ac5b44643f27416b
   subpackages:
   - buffer
   - jlexer
   - jwriter
 - name: github.com/mitchellh/mapstructure
   version: 53818660ed4955e899c0bcafa97299a388bd7c8e
+- name: github.com/opencontainers/go-digest
+  version: a6d0ee40d4207ea02364bd3b9e8e77b9159ba1eb
 - name: github.com/openshift/origin
-  version: 4aeabc42334de76763a82c17ccc11107c0396106
+  version: 05d2e14f26918fa142e2e702e55fad15a3111b40
   subpackages:
+  - pkg/api/apihelpers
   - pkg/apps/apis/apps
   - pkg/apps/apis/apps/v1
   - pkg/apps/generated/clientset
   - pkg/apps/generated/clientset/scheme
   - pkg/apps/generated/clientset/typed/apps/v1
+  - pkg/authorization/apis/authorization
+  - pkg/authorization/apis/authorization/internal/serviceaccount
   - pkg/authorization/apis/authorization/v1
+  - pkg/authorization/generated/clientset
+  - pkg/authorization/generated/clientset/scheme
+  - pkg/authorization/generated/clientset/typed/authorization/v1
   - pkg/image/apis/image
+  - pkg/image/apis/image/docker10
+  - pkg/image/apis/image/dockerpre012
   - pkg/image/apis/image/internal/digest
   - pkg/image/apis/image/internal/reference
+  - pkg/image/apis/image/v1
+  - pkg/image/generated/clientset
+  - pkg/image/generated/clientset/scheme
+  - pkg/image/generated/clientset/typed/image/v1
   - pkg/oauth/apis/oauth/v1
   - pkg/project/apis/project/v1
   - pkg/quota/apis/quota/v1
@@ -130,6 +211,14 @@ imports:
   version: e57e3eeb33f795204c1ca35f56c44f83227c6e66
 - name: github.com/spf13/viper
   version: 25b30aa063fc18e48662b86996252eabdcf2f0c7
+- name: github.com/tidwall/gjson
+  version: ac7b6ae6f2e8e4469803ec0afe946d1f1d90f463
+  repo: https://github.com/tidwall/gjson
+  vcs: git
+- name: github.com/tidwall/sjson
+  version: 6a22caf2fd45d5e2119bfc3717e984f15a7eb7ee
+  repo: https://github.com/tidwall/sjson
+  vcs: git
 - name: github.com/ugorji/go
   version: ded73eae5db7e7a0ef6f55aace87a2873c5d2b74
   subpackages:
@@ -137,28 +226,55 @@ imports:
 - name: golang.org/x/crypto
   version: d172538b2cfce0c13cee31e647d0367aa8cd2486
   subpackages:
+  - bcrypt
+  - blowfish
+  - cast5
   - curve25519
   - ed25519
   - ed25519/internal/edwards25519
+  - nacl/secretbox
+  - openpgp
+  - openpgp/armor
+  - openpgp/elgamal
+  - openpgp/errors
+  - openpgp/packet
+  - openpgp/s2k
+  - pkcs12
+  - pkcs12/internal/rc2
+  - poly1305
+  - salsa20/salsa
   - ssh
   - ssh/terminal
 - name: golang.org/x/net
   version: f2499483f923065a842d38eb4c7f1927e6fc6e6d
   subpackages:
+  - context
+  - context/ctxhttp
+  - html
+  - html/atom
   - http2
   - http2/hpack
   - idna
+  - internal/timeseries
   - lex/httplex
+  - proxy
+  - trace
+  - websocket
 - name: golang.org/x/sys
-  version: 8f0908ab3b2457e2e15403d3697c9ef5cb4b57a9
+  version: 8d1157a435470616f975ff9bb013bea8d0962067
   subpackages:
   - unix
   - windows
 - name: golang.org/x/text
-  version: 2910a502d2bf9e43193af9d68ca516529614eed3
+  version: ceefd2213ed29504fff30155163c8f59827734f3
   subpackages:
   - cases
+  - encoding
+  - encoding/internal
+  - encoding/internal/identifier
+  - encoding/unicode
   - internal/tag
+  - internal/utf8internal
   - language
   - runes
   - secure/bidirule
@@ -170,7 +286,7 @@ imports:
 - name: gopkg.in/inf.v0
   version: 3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4
 - name: gopkg.in/yaml.v2
-  version: 53feefa2559fb8dfa8d81baad31be332c97d6c77
+  version: a83829b6f1293c91addabc89d0571c246397bbf4
 - name: k8s.io/apimachinery
   version: ca03f0de744c4729d3557a10ca5294f2efbecfc1
   repo: https://github.com/openshift/kubernetes-apimachinery
@@ -180,11 +296,14 @@ imports:
   - pkg/api/errors
   - pkg/api/meta
   - pkg/api/resource
+  - pkg/api/validation
+  - pkg/api/validation/path
   - pkg/apimachinery
   - pkg/apimachinery/announced
   - pkg/apimachinery/registered
   - pkg/apis/meta/v1
   - pkg/apis/meta/v1/unstructured
+  - pkg/apis/meta/v1/validation
   - pkg/apis/meta/v1alpha1
   - pkg/conversion
   - pkg/conversion/queryparams
@@ -317,6 +436,7 @@ imports:
   - pkg/apis/extensions
   - pkg/apis/extensions/v1beta1
   - pkg/apis/networking
+  - pkg/apis/rbac
   - pkg/util
   - pkg/util/parsers
 testImports: []

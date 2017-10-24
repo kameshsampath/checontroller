@@ -35,3 +35,11 @@ import:
   version: ~1.0.0
 - package: github.com/spf13/pflag
   version: ~1.0.0
+- package: github.com/tidwall/gjson
+  repo: https://github.com/tidwall/gjson
+  version: master
+  vcs: git
+- package: github.com/tidwall/sjson
+  repo: https://github.com/tidwall/sjson
+  version: master
+  vcs: git
