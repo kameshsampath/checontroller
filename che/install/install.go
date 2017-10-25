@@ -24,8 +24,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api/v1"
 
-	"k8s.io/client-go/rest"
-
 	oappv1 "github.com/openshift/origin/pkg/apps/apis/apps/v1"
 	appclient "github.com/openshift/origin/pkg/apps/generated/clientset"
 
@@ -43,7 +41,9 @@ import (
 
 	coretypes "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	chetpl "github.com/kameshsampath/checontroller/che/template"
 	"github.com/kameshsampath/checontroller/util"
+
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 )
 
@@ -59,53 +59,78 @@ const (
 	objRoute             = "routes.route.openshift.io"
 	objRoleBindings      = "rolebinding.authorization.openshift.io"
 	objImageStreams      = "imagestreams.image.openshift.io"
+	objTemplates         = "templates.template.openshift.io"
 
 	//
 	adminUserRegx = `^.*User "(?P<user>[a-zA-Z0-9_-]*)" cannot create.*$`
 )
 
 var (
-	installer          *InstallerConfig
+	//Installer represents the configuration that is provided during Che Installation
+	Installer          *InstallerConfig
 	validAdminUserReqd = regexp.MustCompile(adminUserRegx)
+	tplBuilder         = chetpl.NewBuilder()
 )
-
-//NewInstaller contructs a new installer an
-func NewInstaller(config *rest.Config, namespace, imageTag string, openshiftType OpenShiftType) *InstallerConfig {
-	installer = &InstallerConfig{
-		config:        config,
-		namespace:     namespace,
-		OpenShiftType: openshiftType,
-		ImageTag:      imageTag,
-	}
-	return installer
-}
 
 //Install - starts the installation process of Che
 func (ot OpenShiftType) Install() {
-	installer.createCheServiceAccount()
-	installer.createCheRoute()
-	installer.createImageStream()
-	//determine the domain
-	domain, _ := util.CheRouteInfo(installer.config, installer.namespace, "che")
 
-	installer.createCheConfigMap(installer.namespace, domain)
-	installer.createCheDataPVC()
-	installer.createCheWorkspacePVC()
-	installer.createCheService()
+	tplBuilder.ImageTag = Installer.ImageTag
+
+	pvcs := make([]*v1.PersistentVolumeClaim, 2)
+
+	tplBuilder.ServiceAccount = Installer.createCheServiceAccount()
+	tplBuilder.Route = Installer.createCheRoute()
+
+	Installer.createImageStream()
+
+	//determine the domain
+	domain, _ := util.CheRouteInfo(Installer.Config, Installer.Namespace, Installer.AppName)
+	Installer.Domain = domain
+	tplBuilder.Domain = domain
+
+	tplBuilder.ConfigMap = Installer.createCheConfigMap()
+
+	pvcs[0] = Installer.createCheDataPVC()
+	pvcs[1] = Installer.createCheWorkspacePVC()
+	tplBuilder.PVCs = pvcs
+
+	tplBuilder.Service = Installer.createCheService()
 
 	switch ot {
 	case "minishift":
-		//installer.applyQuota()
-		installer.createRoleBinding()
+		//Installer.applyQuota()
+		Installer.createRoleBinding()
 	case "ocp":
-		//installer.applyQuota()
+		//Installer.applyQuota()
 	}
-	installer.createCheDeploymentConfig()
+
+	tplBuilder.DeploymentConfig = Installer.createCheDeploymentConfig()
+
+	if Installer.SaveAsTemplate != "" {
+		log.Infof(`Saving Che Install as Template with name "%s"`, Installer.SaveAsTemplate)
+		tplBuilder.Name = Installer.SaveAsTemplate
+		_, err := tplBuilder.CreateTemplate(Installer.Config)
+		if err != nil {
+			b := objectExists(objTemplates, Installer.SaveAsTemplate, err)
+			if b {
+				log.Infoln(`Template  "%s" already exists, skipping creation`, Installer.SaveAsTemplate)
+				return
+			} else if match := validAdminUserReqd.FindStringSubmatch(err.Error()); match != nil {
+				log.Fatalf(`Logged in user "%s" does not have enough privileges to create template in openshift namespace, login as Admin user or similar`, match[1])
+				return
+			} else {
+				log.Errorf(`Error saving as template "%s" %s`, Installer.SaveAsTemplate, err)
+			}
+		} else {
+			log.Infof(`Successfully created template "%s"`, Installer.SaveAsTemplate)
+		}
+	}
 }
 
 //Creates Eclipse Che Server Image Stream
 func (i *InstallerConfig) createImageStream() {
-	clientset, err := isclient.NewForConfig(i.config)
+	clientset, err := isclient.NewForConfig(i.Config)
 
 	if err != nil {
 		log.Fatalf("%s", err)
@@ -197,19 +222,21 @@ func (i *InstallerConfig) createImageStream() {
 
 //createRoleBinding creates the RoleBinding required for Che ServiceAccount
 func (i *InstallerConfig) createRoleBinding() {
-	clientset, err := authclient.NewForConfig(i.config)
+	clientset, err := authclient.NewForConfig(i.Config)
 
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
-	ac := clientset.RoleBindings(i.namespace)
+	ac := clientset.RoleBindings(i.Namespace)
+
+	rb := fmt.Sprintf(`%s-che`, i.AppName)
 
 	_, err = ac.Create(&authv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "che",
+			Name: rb,
 			Labels: map[string]string{
-				"app": "che",
+				"app": i.AppName,
 			},
 		},
 		RoleRef: kapi.ObjectReference{
@@ -217,129 +244,136 @@ func (i *InstallerConfig) createRoleBinding() {
 		},
 		Subjects: []kapi.ObjectReference{
 			{
-				Name: "che",
+				Name: i.AppName,
 				Kind: "ServiceAccount",
 			},
 		},
 	})
 
 	if err != nil {
-		b := objectExists(objRoleBindings, "che", err)
+		b := objectExists(objRoleBindings, rb, err)
 		if b {
-			log.Infoln(`RoleBinding  "che" already exists, skipping creation`)
+			log.Infof(`RoleBinding  "%s" already exists, skipping creation`, rb)
 			return
 		} else if match := validAdminUserReqd.FindStringSubmatch(err.Error()); match != nil {
-			log.Fatalf(`Logged in user "%s" does not have enough priviliges, login as Admin user or similar`, match[1])
+			log.Fatalf(`Logged in user "%s" does not have enough privileges to create RoleBinding, login as Admin user or similar`, match[1])
 			return
 		} else {
-			log.Fatalf(`Error creating RoleBinding "che" %s`, err)
+			log.Fatalf(`Error creating RoleBinding "%s" %s`, rb, err)
 		}
 	} else {
-		log.Infoln(`RoleBinding "che" successfully created`)
+		log.Infof(`RoleBinding "%s" successfully created`, rb)
 	}
 }
 
 //createConfigMap Creates the che configMap
-func (i *InstallerConfig) createCheConfigMap(project, domain string) {
-	clientset, err := kubernetes.NewForConfig(i.config)
+func (i *InstallerConfig) createCheConfigMap() *v1.ConfigMap {
+	clientset, err := kubernetes.NewForConfig(i.Config)
 
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
-	cmClient := clientset.ConfigMaps(i.namespace)
+	cmClient := clientset.ConfigMaps(i.Namespace)
 
-	_, err = cmClient.Create(&v1.ConfigMap{
+	val := &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "che",
+			Name: i.AppName,
 			Labels: map[string]string{
-				"app": "che",
+				"app": i.AppName,
 			},
 		},
-		Data: i.OpenShiftType.configMap(project, domain),
-	})
+		Data: i.OpenShiftType.configMap(),
+	}
+
+	_, err = cmClient.Create(val)
 
 	if err != nil {
-		b := objectExists("configmaps", "che", err)
+		b := objectExists("configmaps", i.AppName, err)
 		if b {
-			log.Infoln(`ConfigMap  "che" already exists, skipping creation`)
-			return
+			log.Infof(`ConfigMap  "%s" already exists, skipping creation`, i.AppName)
+			return val
 		}
-		log.Fatalf("Error creating ConfigMap \"che\" %s", err)
+		log.Fatalf(`Error creating ConfigMap "%s" %s`, i.AppName, err)
 	} else {
-		log.Infoln(`ConfigMap "che" successfully created`)
+		log.Infof(`ConfigMap "%s" successfully created`, i.AppName)
 	}
+
+	return val
 }
 
 //createCheDataPVC Creates the che data Persistence Volume Claim
-func (i *InstallerConfig) createCheDataPVC() {
-	clientset, err := kubernetes.NewForConfig(i.config)
+func (i *InstallerConfig) createCheDataPVC() *v1.PersistentVolumeClaim {
+	clientset, err := kubernetes.NewForConfig(i.Config)
 
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
-	pvcClient := clientset.CoreV1().PersistentVolumeClaims(i.namespace)
+	pvcClient := clientset.CoreV1().PersistentVolumeClaims(i.Namespace)
 
-	_, err = createDefaultPVC(pvcClient, "che-data-volume")
+	val, err := createDefaultPVC(pvcClient, i.AppName, fmt.Sprintf("%s-data-volume", i.AppName))
 
 	if err != nil {
-		b := objectExists(objPVC, "che-data-volume", err)
+		b := objectExists(objPVC, fmt.Sprintf("%s-data-volume", i.AppName), err)
 		if b {
-			log.Infoln(`PersistenceVolumeClaim  "che-data-volume" already exists, skipping creation`)
-			return
+			log.Infof(`PersistenceVolumeClaim  "%s" already exists, skipping creation`, fmt.Sprintf("%s-data-volume", i.AppName))
+			return val
 		}
-		log.Fatalf(`Error creating PersistenceVolumeClaim "che-data-volume" %s`, err)
+		log.Fatalf(`Error creating PersistenceVolumeClaim "%s" %s`, fmt.Sprintf("%s-data-volume", i.AppName), err)
 	} else {
-		log.Infoln(`PersistenceVolumeClaim "che-data-volume" successfully created`)
+		log.Infof(`PersistenceVolumeClaim "%s" successfully created`, fmt.Sprintf("%s-data-volume", i.AppName))
 	}
+	return val
 }
 
 //createCheWorkspacePVC Creates the che workspace Persistence Volume Claim
-func (i *InstallerConfig) createCheWorkspacePVC() {
-	clientset, err := kubernetes.NewForConfig(i.config)
+func (i *InstallerConfig) createCheWorkspacePVC() *v1.PersistentVolumeClaim {
+	clientset, err := kubernetes.NewForConfig(i.Config)
 
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
-	pvcClient := clientset.CoreV1().PersistentVolumeClaims(i.namespace)
+	pvcClient := clientset.CoreV1().PersistentVolumeClaims(i.Namespace)
 
-	_, err = createDefaultPVC(pvcClient, "claim-che-workspace")
+	val, err := createDefaultPVC(pvcClient, i.AppName, fmt.Sprintf("%s-che-workspace", i.AppName))
 
 	if err != nil {
-		b := objectExists(objPVC, "claim-che-workspace", err)
+		b := objectExists(objPVC, fmt.Sprintf("%s-che-workspace", i.AppName), err)
 		if b {
-			log.Infoln(`PersistenceVolumeClaim  "claim-che-workspace" already exists, skipping creation`)
-			return
+			log.Infof(`PersistenceVolumeClaim  "%s" already exists, skipping creation`, fmt.Sprintf("%s-che-workspace", i.AppName))
+			return val
 		}
-		log.Fatalf(`Error creating PersistenceVolumeClaim "claim-che-workspace" %s`, err)
+		log.Fatalf(`Error creating PersistenceVolumeClaim "%s" %s`, fmt.Sprintf("%s-che-workspace", i.AppName), err)
 	} else {
-		log.Infoln(`PersistenceVolumeClaim "claim-che-workspace" successfully created`)
+		log.Infof(`PersistenceVolumeClaim "%s" successfully created`, fmt.Sprintf("%s-che-workspace", i.AppName))
 	}
+
+	return val
 }
 
 //createDeploymentConfig Creates the che deploymentconfig
-func (i *InstallerConfig) createCheDeploymentConfig() {
-	appcs, err := appclient.NewForConfig(i.config)
+func (i *InstallerConfig) createCheDeploymentConfig() *oappv1.DeploymentConfig {
+	appcs, err := appclient.NewForConfig(i.Config)
 
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
-	dcClient := appcs.AppsV1().DeploymentConfigs(i.namespace)
+	dcClient := appcs.AppsV1().DeploymentConfigs(i.Namespace)
 
 	ts := int64(10000)
 
-	_, err = dcClient.Create(&oappv1.DeploymentConfig{ObjectMeta: metav1.ObjectMeta{
-		Name: "che",
+	val := &oappv1.DeploymentConfig{ObjectMeta: metav1.ObjectMeta{
+		Name: i.AppName,
 		Labels: map[string]string{
-			"app": "che",
+			"app": i.AppName,
 		},
 	}, Spec: oappv1.DeploymentConfigSpec{
 		Replicas: 1,
 		Selector: map[string]string{
-			"app": "che",
+			"app": i.AppName,
 		},
 		Strategy: oappv1.DeploymentStrategy{
 			RecreateParams: &oappv1.RecreateDeploymentStrategyParams{
@@ -349,7 +383,7 @@ func (i *InstallerConfig) createCheDeploymentConfig() {
 		},
 		Template: &kapi.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				"app": "che",
+				"app": i.AppName,
 			},
 		}, Spec: kapi.PodSpec{
 			Containers: []kapi.Container{
@@ -400,13 +434,13 @@ func (i *InstallerConfig) createCheDeploymentConfig() {
 					},
 				},
 			},
-			ServiceAccountName: "che",
+			ServiceAccountName: i.AppName,
 			Volumes: []kapi.Volume{
 				{
-					Name: "che-data-volume",
+					Name: fmt.Sprintf("%s-data-volume", i.AppName),
 					VolumeSource: kapi.VolumeSource{
 						PersistentVolumeClaim: &kapi.PersistentVolumeClaimVolumeSource{
-							ClaimName: "che-data-volume",
+							ClaimName: fmt.Sprintf("%s-data-volume", i.AppName),
 						},
 					},
 				},
@@ -429,64 +463,72 @@ func (i *InstallerConfig) createCheDeploymentConfig() {
 				Type: oappv1.DeploymentTriggerOnConfigChange,
 			},
 		},
-	}})
+	}}
+
+	_, err = dcClient.Create(val)
 
 	if err != nil {
-		b := objectExists(objDeploymentConfigs, "che", err)
+		b := objectExists(objDeploymentConfigs, i.AppName, err)
 		if b {
-			log.Infoln(`DeploymentConfig  "che" already exists, skipping creation`)
-			return
+			log.Infof(`DeploymentConfig  "%s" already exists, skipping creation`, i.AppName)
+			return val
 		}
-		log.Fatalf(`Error creating DeploymentConfig "che" %s`, err)
+		log.Fatalf(`Error creating DeploymentConfig "%s" %s`, i.AppName, err)
 	} else {
-		log.Infoln(`DeploymentConfig "che" successfully created`)
+		log.Infof(`DeploymentConfig "%s" successfully created`, i.AppName)
 	}
+
+	return val
 }
 
 //createCheRoute Creates the che route
-func (i *InstallerConfig) createCheRoute() {
+func (i *InstallerConfig) createCheRoute() *ov1.Route {
 
-	rc, err := routeclient.NewForConfig(i.config)
+	rc, err := routeclient.NewForConfig(i.Config)
 
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
-	routesClient := rc.RouteV1Client.Routes(i.namespace)
+	routesClient := rc.RouteV1Client.Routes(i.Namespace)
 
-	_, err = routesClient.Create(&ov1.Route{ObjectMeta: metav1.ObjectMeta{
-		Name: "che",
+	val := &ov1.Route{ObjectMeta: metav1.ObjectMeta{
+		Name: i.AppName,
 		Labels: map[string]string{
-			"app": "che",
+			"app": i.AppName,
 		},
-	}, Spec: i.OpenShiftType.routeSpec()})
+	}, Spec: i.OpenShiftType.routeSpec()}
+
+	_, err = routesClient.Create(val)
 
 	if err != nil {
-		b := objectExists(objRoute, "che", err)
+		b := objectExists(objRoute, i.AppName, err)
 		if b {
-			log.Infoln(`Route "che" already exists, skipping creation`)
-			return
+			log.Infof(`Route "%s" already exists, skipping creation`, i.AppName)
+			return val
 		}
-		log.Fatalf(`Error creating Route "che" %s`, err)
+		log.Fatalf(`Error creating Route "%s" %s`, i.AppName, err)
 	} else {
-		log.Infoln(`Route "che" successfully created`)
+		log.Infof(`Route "%s" successfully created`, i.AppName)
 	}
+
+	return val
 }
 
 //createCheService Creates the che service
-func (i *InstallerConfig) createCheService() {
-	clientset, err := kubernetes.NewForConfig(i.config)
+func (i *InstallerConfig) createCheService() *v1.Service {
+	clientset, err := kubernetes.NewForConfig(i.Config)
 
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
-	svcClient := clientset.CoreV1().Services(i.namespace)
+	svcClient := clientset.CoreV1().Services(i.Namespace)
 
-	_, err = svcClient.Create(&v1.Service{ObjectMeta: metav1.ObjectMeta{
-		Name: "che-host",
+	val := &v1.Service{ObjectMeta: metav1.ObjectMeta{
+		Name: fmt.Sprintf(`%s-host`, i.AppName),
 		Labels: map[string]string{
-			"app": "che",
+			"app": i.AppName,
 		},
 	}, Spec: v1.ServiceSpec{Ports: []v1.ServicePort{
 		v1.ServicePort{
@@ -498,58 +540,64 @@ func (i *InstallerConfig) createCheService() {
 			}},
 	},
 		Selector: map[string]string{
-			"app": "che",
+			"app": i.AppName,
 		},
-	}})
+	}}
+	_, err = svcClient.Create(val)
 
 	if err != nil {
-		b := objectExists(objService, "che-host", err)
+		b := objectExists(objService, fmt.Sprintf(`%s-host`, i.AppName), err)
 		if b {
-			log.Infoln(`Service "che-host" already exists, skipping creation`)
-			return
+			log.Infof(`Service "%s" already exists, skipping creation`, fmt.Sprintf(`%s-host`, i.AppName))
+			return val
 		}
-		log.Fatalf(`Error creating Service "che" %s`, err)
+		log.Fatalf(`Error creating Service "%s" %s`, fmt.Sprintf(`%s-host`, i.AppName), err)
 	} else {
-		log.Infoln(`Service "che-host" successfully created`)
+		log.Infof(`Service "%s" successfully created`, fmt.Sprintf(`%s-host`, i.AppName))
 	}
+
+	return val
 }
 
 //createCheServiceAccount Creates the che service account
-func (i *InstallerConfig) createCheServiceAccount() {
+func (i *InstallerConfig) createCheServiceAccount() *v1.ServiceAccount {
 
-	clientset, err := kubernetes.NewForConfig(i.config)
+	clientset, err := kubernetes.NewForConfig(i.Config)
 
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
-	saClient := clientset.CoreV1().ServiceAccounts(i.namespace)
+	saClient := clientset.CoreV1().ServiceAccounts(i.Namespace)
 
-	_, err = saClient.Create(&v1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
-		Name: "che",
+	val := &v1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+		Name: i.AppName,
 		Labels: map[string]string{
-			"app": "che",
+			"app": i.AppName,
 		},
-	}})
+	}}
+	_, err = saClient.Create(val)
 
 	if err != nil {
-		b := objectExists(objServiceAccounts, "che", err)
+		b := objectExists(objServiceAccounts, i.AppName, err)
 		if b {
-			log.Infoln(`ServiceAccount "che" already exists, skipping creation`)
-			return
+			log.Infof(`ServiceAccount "%s" already exists, skipping creation`, i.AppName)
+			return val
 		}
-		log.Fatalf(`Error creating ServiceAccount "che" %s`, err)
+		log.Fatalf(`Error creating ServiceAccount "%s" %s`, i.AppName, err)
 	} else {
-		log.Infoln(`ServiceAccount "che" successfully created`)
+		log.Infof(`ServiceAccount "%s" successfully created`, i.AppName)
 	}
+
+	return val
 }
 
 //createDefaultPVC creates a defaultPVC
-func createDefaultPVC(pvcClient coretypes.PersistentVolumeClaimInterface, volumeName string) (*v1.PersistentVolumeClaim, error) {
-	return pvcClient.Create(&v1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
+func createDefaultPVC(pvcClient coretypes.PersistentVolumeClaimInterface, appName, volumeName string) (*v1.PersistentVolumeClaim, error) {
+	val := &v1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 		Name: volumeName,
 		Labels: map[string]string{
-			"app": "che",
+			"app": appName,
 		},
 	}, Spec: v1.PersistentVolumeClaimSpec{
 		AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -558,7 +606,11 @@ func createDefaultPVC(pvcClient coretypes.PersistentVolumeClaimInterface, volume
 				"storage": resource.MustParse("1Gi"),
 			},
 		},
-	}})
+	}}
+
+	_, err := pvcClient.Create(val)
+
+	return val, err
 }
 
 //objectExists simple method to check if the object exists or not
@@ -567,13 +619,13 @@ func objectExists(object, name string, err error) bool {
 }
 
 // build the Che configmap based on the OpenShiftType
-func (ot OpenShiftType) configMap(project, domain string) map[string]string {
+func (ot OpenShiftType) configMap() map[string]string {
 	cm := map[string]string{
-		"hostname-http":                                                  fmt.Sprintf(`%s-che.%s`, project, domain),
+		"hostname-http":                                                  fmt.Sprintf(`%s.%s`, Installer.AppName, Installer.Domain),
 		"workspace-storage":                                              "/home/user/che/workspaces",
 		"workspace-storage-create-folders":                               "false",
 		"local-conf-dir":                                                 "/etc/conf",
-		"openshift-serviceaccountname":                                   "che",
+		"openshift-serviceaccountname":                                   Installer.AppName,
 		"che-server-evaluation-strategy":                                 "docker-local-custom",
 		"che.logs.dir":                                                   "/data/logs",
 		"che.docker.server_evaluation_strategy.custom.template":          "<serverName>-<if(isDevMachine)><workspaceIdWithoutPrefix><else><machineName><endif>-<externalAddress>",
@@ -595,6 +647,7 @@ func (ot OpenShiftType) configMap(project, domain string) map[string]string {
 		"che-openshift-precreate-subpaths": "false",
 		"che-workspace-auto-snapshot":      "false",
 		"keycloak-disabled":                "false",
+		"maven-mirror-url":                 Installer.MavenMirrorURL,
 	}
 
 	switch ot {
@@ -622,7 +675,7 @@ func (ot OpenShiftType) routeSpec() ov1.RouteSpec {
 	routeSpec := &ov1.RouteSpec{
 		To: ov1.RouteTargetReference{
 			Kind: "Service",
-			Name: "che-host",
+			Name: fmt.Sprintf(`%s-host`, Installer.AppName),
 		}}
 
 	switch ot {
@@ -642,14 +695,14 @@ func (ot OpenShiftType) routeSpec() ov1.RouteSpec {
 	return *routeSpec
 }
 
-//Customized Environment Variables for each OpenShiftType
+//CheEnvVars Customized Environment Variables for each OpenShiftType
 func (ot OpenShiftType) cheEnvVars() []kapi.EnvVar {
 	switch ot {
 	case "minishift":
-		return CheEnvVars()
+		return Installer.CheEnvVars()
 	case "ocp":
-		return OCPCheEnvVars()
+		return Installer.OCPCheEnvVars()
 	default:
-		return CheEnvVars()
+		return Installer.CheEnvVars()
 	}
 }

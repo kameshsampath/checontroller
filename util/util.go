@@ -40,16 +40,33 @@ func DefaultNamespaceFromConfig(kubeconfig *string) string {
 }
 
 //IsChePod verifies if the pod is a che pod wit set of Labels
-func IsChePod(obj interface{}) bool {
+func IsChePod(appName string, obj interface{}) bool {
 
 	pod := obj.(*v1.Pod)
 
+	var b bool
+
+	//Check if labels deploymentconfig or app or application has the appName in it
+
 	if val, exists := pod.Labels["deploymentconfig"]; exists {
-		if val == "che" {
-			return true
+		if val == appName {
+			b = true
 		}
 	}
-	return false
+
+	if val, exists := pod.Labels["app"]; exists {
+		if val == appName {
+			b = b || true
+		}
+	}
+
+	if val, exists := pod.Labels["application"]; exists {
+		if val == appName {
+			b = b || true
+		}
+	}
+
+	return b
 }
 
 //CheRouteInfo - returns the Che External URL configured via Route
@@ -98,6 +115,6 @@ func HandleSigterm(stopCh chan struct{}) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-signalChan
-	log.Infoln("Received signal %s, shutting down", sig)
+	log.Infof("Received signal %s, shutting down", sig)
 	close(stopCh)
 }

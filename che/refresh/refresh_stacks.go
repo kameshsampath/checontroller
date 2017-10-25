@@ -48,9 +48,10 @@ func TickAndRefresh(c *Controller) {
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Print(".")
 				if c.Done {
 					close(stopCh)
+				} else {
+					fmt.Print(".")
 				}
 			case <-stopCh:
 				ticker.Stop()
@@ -211,6 +212,8 @@ func (c *Config) QueryStacks() ([]Stack, error) {
 //RefreshStacks does refreshing of stacks once ChePod is up
 func (c *Config) RefreshStacks() {
 
+	fmt.Printf(".done\n")
+
 	log.Infof("Refreshing Stacks Che Endpoint URI: %s", c.CheEndpointURI)
 
 	result, err := c.QueryStacks()
@@ -223,8 +226,6 @@ func (c *Config) RefreshStacks() {
 
 	if resultCount <= 0 {
 		log.Infoln("No old Stacks exist")
-	} else {
-		log.Infof("%d Old Stacks will be deleted", resultCount)
 	}
 
 	for _, s := range result {

@@ -33,7 +33,7 @@ import (
 )
 
 //NewController will build a new controller
-func NewCheController(cheEndpointURI, podNamespace, newStackURL string, incluster bool, p rest.Interface) *Controller {
+func NewCheController(cheEndpointURI, podNamespace, newStackURL, appName string, incluster bool, p rest.Interface) *Controller {
 
 	podListWatcher := cache.NewListWatchFromClient(p, "pods", podNamespace, fields.Everything())
 
@@ -43,7 +43,7 @@ func NewCheController(cheEndpointURI, podNamespace, newStackURL string, incluste
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err == nil {
-				if util.IsChePod(obj) {
+				if util.IsChePod(appName, obj) {
 					log.Debugf("Adding Pod %s to queue", key)
 					queue.Add(key)
 				}
@@ -52,7 +52,7 @@ func NewCheController(cheEndpointURI, podNamespace, newStackURL string, incluste
 		UpdateFunc: func(obj, newObj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(newObj)
 			if err == nil {
-				if util.IsChePod(newObj) {
+				if util.IsChePod(appName, newObj) {
 					log.Debugf("Updating Pod %s to queue", key)
 					queue.Add(key)
 				}
@@ -68,12 +68,18 @@ func NewCheController(cheEndpointURI, podNamespace, newStackURL string, incluste
 	}, cache.Indexers{})
 
 	//warm up the index
+	labels := map[string]string{
+		"app":              appName,
+		"deploymentconfig": appName,
+		"application":      appName,
+	}
+
+	log.Debugf("Warming index with labels :%#v", labels)
+
 	indexer.Add(&v1.Pod{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Namespace: podNamespace,
-			Labels: map[string]string{
-				"app": "che",
-			},
+			Labels:    labels,
 		},
 	})
 
@@ -152,6 +158,7 @@ func (c *Controller) handleError(key interface{}, err error) {
 }
 
 func (c *Controller) refreshStacks(key string) error {
+
 	obj, exists, err := c.indexer.GetByKey(key)
 
 	if err != nil {
@@ -165,6 +172,7 @@ func (c *Controller) refreshStacks(key string) error {
 		log.Debugf("Pod :%s has state :%s", pod.ObjectMeta.Name, pod.Status.Phase)
 		if pod.Status.Phase == "Running" {
 			for _, container := range pod.Status.ContainerStatuses {
+				log.Debugf("Container Name: %s", container.Name)
 				if "che" == container.Name && container.Ready {
 					time.Sleep(15 * time.Second) //time for ws agent to warmup
 					if c.incluster {

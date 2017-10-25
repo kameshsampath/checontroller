@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package install
 
 import (
@@ -21,24 +22,41 @@ import (
 // OpenShiftType to distinguish between minishift, ocp, osio etc.,
 type OpenShiftType string
 
-//InstallerConfig will be used during installation processs
+//InstallerConfig will be used during installation process
 type InstallerConfig struct {
-	config        *rest.Config
-	namespace     string
-	OpenShiftType OpenShiftType
-	ImageTag      string
+	Config         *rest.Config
+	AppName        string
+	Domain         string
+	Namespace      string
+	OpenShiftType  OpenShiftType
+	ImageTag       string
+	SaveAsTemplate string
+	MavenMirrorURL string
 }
 
 //CheEnvVars environment variables required by Che app
-func CheEnvVars() []kapi.EnvVar {
-	return []kapi.EnvVar{
+func (i *InstallerConfig) CheEnvVars() []kapi.EnvVar {
+
+	envVars := []kapi.EnvVar{
+		{
+			Name:  "APPLICATION_NAME",
+			Value: i.AppName,
+		},
+		{
+			Name:  "DOMAIN_NAME",
+			Value: i.Domain,
+		},
+		{
+			Name:  "IMAGE_TAG",
+			Value: i.ImageTag,
+		},
 		{
 			Name: "CHE_DOCKER_IP_EXTERNAL",
 			ValueFrom: &kapi.EnvVarSource{
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "hostname-http",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -49,7 +67,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "workspace-storage",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -60,7 +78,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che.logs.dir",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -71,7 +89,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "workspace-storage-create-folders",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -82,7 +100,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "local-conf-dir",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -101,7 +119,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "openshift-serviceaccountname",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -112,7 +130,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che-server-evaluation-strategy",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -123,7 +141,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che.docker.server_evaluation_strategy.custom.template",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -134,7 +152,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che.docker.server_evaluation_strategy.custom.external.protocol",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -145,7 +163,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che.predefined.stacks.reload_on_start",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -156,7 +174,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "log-level",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -167,7 +185,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "port",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -178,7 +196,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "docker-connector",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -189,7 +207,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "remote-debugging-enabled",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -200,7 +218,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che-oauth-github-forceactivation",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -211,7 +229,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "workspaces-memory-limit",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -222,7 +240,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "workspaces-memory-request",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -233,7 +251,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "enable-workspaces-autostart",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -244,7 +262,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che-server-java-opts",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -255,7 +273,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che-workspaces-java-opts",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -266,7 +284,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che-openshift-secure-routes",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -277,7 +295,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che-secure-external-urls",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -288,7 +306,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che-server-timeout-ms",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -299,7 +317,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che-openshift-precreate-subpaths",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -310,7 +328,7 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "keycloak-disabled",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
@@ -321,22 +339,39 @@ func CheEnvVars() []kapi.EnvVar {
 				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 					Key: "che-workspace-auto-snapshot",
 					LocalObjectReference: kapi.LocalObjectReference{
-						Name: "che",
+						Name: i.AppName,
 					},
 				},
 			},
 		},
 	}
+
+	if i.MavenMirrorURL != "" {
+		t := make([]kapi.EnvVar, len(envVars)+1, 2*len(envVars)) //expand
+		copy(t, envVars)                                         //copy old to new
+		t[len(envVars)] = kapi.EnvVar{                           //add MAVEN_MIRROR
+			Name: "MAVEN_MIRROR_URL",
+			ValueFrom: &kapi.EnvVarSource{
+				ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
+					Key: "maven-mirror-url",
+					LocalObjectReference: kapi.LocalObjectReference{
+						Name: i.AppName,
+					},
+				},
+			},
+		}
+	}
+	return envVars
 }
 
 //OCPCheEnvVars additional Env variables that might be needed for Che on OCP
 //Separate methods are maintained to allow changes specific to each OpenShift type
-func OCPCheEnvVars() []kapi.EnvVar {
-	return extendAndCopy()
+func (i *InstallerConfig) OCPCheEnvVars() []kapi.EnvVar {
+	return i.extendAndCopy()
 }
 
-func extendAndCopy() []kapi.EnvVar {
-	v := CheEnvVars()
+func (i *InstallerConfig) extendAndCopy() []kapi.EnvVar {
+	v := i.CheEnvVars()
 	n := len(v)
 
 	v2 := make([]kapi.EnvVar, n, 2*cap(v))
@@ -349,7 +384,7 @@ func extendAndCopy() []kapi.EnvVar {
 			ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 				Key: "keycloak-oso-endpoint",
 				LocalObjectReference: kapi.LocalObjectReference{
-					Name: "che",
+					Name: i.AppName,
 				},
 			},
 		},
@@ -361,7 +396,7 @@ func extendAndCopy() []kapi.EnvVar {
 			ConfigMapKeyRef: &kapi.ConfigMapKeySelector{
 				Key: "keycloak-github-endpoint",
 				LocalObjectReference: kapi.LocalObjectReference{
-					Name: "che",
+					Name: i.AppName,
 				},
 			},
 		},

@@ -15,40 +15,40 @@
 package cmd
 
 import (
-	"flag"
+	"os"
+
 	cher "github.com/kameshsampath/checontroller/che/refresh"
-	"github.com/kameshsampath/checontroller/util"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
-	"os"
-	"path/filepath"
 )
 
 // refreshCmd represents the refresh command
 var (
-	refreshCmd = &cobra.Command{
+	cheEndpointURI  string
+	newStackURL     string
+	applicationName string
+	incluster       *bool
+)
+
+//NewRefreshCmd builds new refresh command to refresh che stacks
+func NewRefreshCmd() *cobra.Command {
+
+	cmd = &cobra.Command{
 		Use:   "refresh",
 		Short: "Refreshes all the Che stack to make it OpenShift compatible",
 		Long:  `Refreshes all the Che stack to make it OpenShift compatible, typically deleteing all the stacks and loading fresh list of compatible stack.`,
 		Run:   refresh,
 	}
-	cheEndpointURI string
-	newStackURL    string
-	incluster      *bool
-)
 
-func init() {
-	RootCmd.AddCommand(refreshCmd)
+	incluster = cmd.Flags().Bool("incluster", false, "Where the controller will running, ability to deploy this app as a pod")
 
-	incluster = refreshCmd.Flags().Bool("incluster", false, "Where the controller will running")
+	cmd.Flags().StringVarP(&cheEndpointURI, "endpointURI", "e", "http://localhost:8080", "The Che endpoint URI")
+	cmd.Flags().StringVarP(&newStackURL, "new-stack-url", "", DefaultNewStackURL, "The JSON from where to load the new stacks")
+	cmd.Flags().StringVarP(&applicationName, "application-name", "n", "", "The Che application name, which was used when installing")
 
-	refreshCmd.Flags().StringVarP(&cheEndpointURI, "endpointURI", "e", "http://localhost:8080", "The Che endpoint URI")
-	refreshCmd.Flags().StringVarP(&newStackURL, "newStackURL", "n", "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json", "The JSON from where to load the new stacks")
-
+	return cmd
 }
 
 //refresh will handle the Che StackRefreshing calls
@@ -57,17 +57,9 @@ func refresh(cmd *cobra.Command, args []string) {
 	log.Infof("Che  Endpoint URI %s", cheEndpointURI)
 	log.Infof("New Stack URI %s", newStackURL)
 
-	var kubeconfig, podNamespace *string
-
+	var podNamespace *string
 	var clientset *kubernetes.Clientset
-
-	home := homedir.HomeDir()
-
-	log.Debugf("Home Dir :%s\n", home)
-
-	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	podNamespace = flag.String("namespace", "", "The Kubernetes Namespace to use")
-	flag.Parse()
+	var err error
 
 	if *incluster {
 		log.Infoln("Accessing from inside cluster")
@@ -82,16 +74,9 @@ func refresh(cmd *cobra.Command, args []string) {
 		*podNamespace = os.Getenv("KUBERNETES_NAMESPACE")
 	} else {
 		log.Infoln("Accessing from outside cluster")
-		config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-
-		if err != nil {
-			log.Fatalf("Unable to build kubeconfig %s", err)
-		}
-		if *podNamespace == "" {
-			*podNamespace = util.DefaultNamespaceFromConfig(kubeconfig)
-		}
+		*podNamespace = Namespace
 		//creates clientset
-		clientset, err = kubernetes.NewForConfig(config)
+		clientset, err = kubernetes.NewForConfig(Config)
 		if err != nil {
 			log.Fatalf("Unable to build client %s", err)
 		}
@@ -100,7 +85,7 @@ func refresh(cmd *cobra.Command, args []string) {
 	log.Infof("Using Namespace: %s", *podNamespace)
 
 	//create controller
-	c := cher.NewCheController(cheEndpointURI, *podNamespace, newStackURL,
+	c := cher.NewCheController(cheEndpointURI, *podNamespace, newStackURL, applicationName,
 		*incluster, clientset.CoreV1Client.RESTClient())
 
 	//Daemon mode

@@ -14,9 +14,6 @@
 package cmd
 
 import (
-	"flag"
-	"path/filepath"
-
 	cheinstall "github.com/kameshsampath/checontroller/che/install"
 	"github.com/kameshsampath/checontroller/util"
 
@@ -24,56 +21,46 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 )
 
 // installCmd represents the install command
 var (
-	installCmd = &cobra.Command{
+	cmd             *cobra.Command
+	appName         string
+	newStacksURL    string
+	imageTag        string
+	refreshStacks   bool
+	openshiftFlavor string
+	saveAsTemplate  string
+	mavenMirrorURL  string
+)
+
+//NewInstallCmd builds a new install command
+func NewInstallCmd() *cobra.Command {
+	cmd = &cobra.Command{
 		Use:   "install",
 		Short: "Install Che on OpenShift",
 		Long:  `Installs and Configure Che on OpenShift`,
 		Run:   install,
 	}
-	newStacksURL    string
-	imageTag        string
-	refreshStacks   bool
-	openshiftFlavor string
-)
 
-func init() {
-	RootCmd.AddCommand(installCmd)
-
-	installCmd.Flags().BoolVarP(&refreshStacks, "refreshstacks", "r", true, `Refresh the stack to make it OpenShift compatible`)
-	installCmd.Flags().StringVarP(&imageTag, "imagetag", "t", "latest", `The Che Image tag to use with che-server image stream,
-		 possible values are latest, nightly `)
-	installCmd.Flags().StringVarP(&openshiftFlavor, "flavor", "f", "minishift", `OpenShift flavor to use valid values are minishift,ocp`)
+	cmd.Flags().StringVarP(&openshiftFlavor, "flavor", "f", "minishift", `OpenShift flavor to use valid values are minishift,ocp`)
+	cmd.Flags().StringVarP(&appName, "name", "n", "che", `The name to be used for the Application`)
+	cmd.Flags().StringVarP(&imageTag, "imagetag", "t", "latest", `The Che Image tag to use with che-server image stream, possible values are latest, nightly `)
+	cmd.Flags().StringVarP(&mavenMirrorURL, "maven-mirror-url", "", "", `The maven mirror url that can be used during build within workspace, e.g http://localnexus/`)
 	//TODO need to move to configmap
-	installCmd.Flags().StringVarP(&newStacksURL, "newStackURL", "n", "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json",
-		`The new stacks JSON that will replace default stacks when deploying on OpenShift`)
+	cmd.Flags().StringVarP(&newStacksURL, "new-stacks-url", "", DefaultNewStackURL, `The new stacks JSON that will replace default stacks when deploying on OpenShift`)
+	cmd.Flags().BoolVarP(&refreshStacks, "refreshstacks", "r", true, `Refresh the stack to make it OpenShift compatible`)
+	//TODO handle template name
+	cmd.Flags().StringVarP(&saveAsTemplate, "save-as-template", "", "che-server-single-users", `Save the Che install as OpenShift template with given name`)
+
+	return cmd
 }
 
+//install
 func install(cmd *cobra.Command, args []string) {
+
 	log.Infoln("Starting Che Install on OpenShift")
-
-	var kubeconfig *string
-
-	home := homedir.HomeDir()
-
-	log.Debugf("Home Dir :%s\n", home)
-
-	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-
-	if err != nil {
-		log.Fatalf("Unable to build config, %v", err)
-	}
-
-	if err != nil {
-		log.Fatalf("%s", err)
-	}
 
 	var openShiftType cheinstall.OpenShiftType
 
@@ -83,27 +70,35 @@ func install(cmd *cobra.Command, args []string) {
 		openShiftType = "ocp"
 	}
 
-	namespace := util.DefaultNamespaceFromConfig(kubeconfig)
+	i := cheinstall.InstallerConfig{
+		AppName:        appName,
+		Config:         Config,
+		Namespace:      Namespace,
+		OpenShiftType:  openShiftType,
+		ImageTag:       imageTag,
+		SaveAsTemplate: saveAsTemplate,
+		MavenMirrorURL: mavenMirrorURL,
+	}
 
-	i := cheinstall.NewInstaller(config, namespace, imageTag, openShiftType)
+	cheinstall.Installer = &i
 
 	i.OpenShiftType.Install()
 
-	_, cheEndpointURI := util.CheRouteInfo(config, namespace, "che")
+	_, cheEndpointURI := util.CheRouteInfo(Config, Namespace, i.AppName)
 
 	if refreshStacks {
 		log.Infoln("Refreshing Stacking post install")
 
 		log.Infof("Using Che Endpoint URI :%s", cheEndpointURI)
-		clientset, err := kubernetes.NewForConfig(config)
+		clientset, err := kubernetes.NewForConfig(Config)
 		if err != nil {
 			log.Fatalf("Unable to build client for refresh %s", err)
 		}
 
-		c := cher.NewCheController(cheEndpointURI, namespace, newStacksURL, false, clientset.CoreV1Client.RESTClient())
+		c := cher.NewCheController(cheEndpointURI, Namespace, newStacksURL, i.AppName, false, clientset.CoreV1Client.RESTClient())
 
 		cher.TickAndRefresh(c)
 	}
 
-	log.Infof("Che is available at: %s", cheEndpointURI)
+	log.Infof("\nChe is available at: %s\n", cheEndpointURI)
 }

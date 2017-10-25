@@ -15,42 +15,79 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
+	"github.com/kameshsampath/checontroller/util"
 	log "github.com/sirupsen/logrus"
-
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-var cfgFile string
+const (
+	//DefaultNewStackURL holds the external url to fetch the New Stacks from
+	DefaultNewStackURL = "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json"
+)
 
-// RootCmd represents the base command when called without any subcommands
-var RootCmd = &cobra.Command{
-	Use:   "chectl",
-	Short: "chectl is a simple commandline utility for Eclipse Che",
-	Long: `The utility helps is performing few of common operations that can be performed on Eclipse Che via CLI.
+var (
+	cfgFile string
+	//Config holds kubernetes rest client config
+	Config *rest.Config
+	//Namespace holds the default Namespace to be used during install
+	Namespace string
+	// RootCmd represents the base command when called without any subcommands
+	rootCmd = &cobra.Command{
+		Use:   "chectl",
+		Short: "chectl is a simple commandline utility for Eclipse Che",
+		Long: `The utility helps is performing few of common operations that can be performed on Eclipse Che via CLI.
 For example: Install Che on to existing OpenShift Cluster using command chectl install`,
-}
+	}
+)
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	if err := RootCmd.Execute(); err != nil {
+	if err := rootCmd.Execute(); err != nil {
 		log.Fatalf("%s", err)
 	}
 }
 
 func init() {
+
+	var kubeconfig *string
+	var err error
+
+	home := homedir.HomeDir()
+
+	log.Debugf("Home Dir :%s\n", home)
+
+	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	flag.Parse()
+
+	Config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+
+	if err != nil {
+		log.Fatalf("Unable to build config, %v", err)
+	}
+
+	Namespace = util.DefaultNamespaceFromConfig(kubeconfig)
+
+	rootCmd.AddCommand(NewInstallCmd())
+	rootCmd.AddCommand(NewRefreshCmd())
+
+	//TODO add persistable flags
 	cobra.OnInitialize(initConfig)
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
-	RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.chectl.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.chectl.yaml)")
 
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true, QuoteEmptyFields: true})
 	log.SetOutput(os.Stdout)

@@ -18,17 +18,17 @@ vendor:
 	cd $(ROOT_PACKAGE) && $(GLIDE) --quiet install
 	@touch $@
 
-bin/checontroller: bin/checontroller-$(GOOS)-$(GOARCH) 
-	cp $(BUILD_DIR)/checontroller-darwin-amd64 $(BUILD_DIR)/checontroller
+bin/chectl: bin/chectl-$(GOOS)-$(GOARCH) 
+	cp $(BUILD_DIR)/checontroller-darwin-amd64 $(BUILD_DIR)/chectl
 
-bin/checontroller-darwin-amd64: gopath 
-	GOARCH=amd64 GOOS=darwin go build -o $(BUILD_DIR)/checontroller-darwin-amd64 main.go
+bin/chectl-darwin-amd64: gopath 
+	GOARCH=amd64 GOOS=darwin go build -o $(BUILD_DIR)/chectl-darwin-amd64 main.go
 	
-bin/checontroller-linux-amd64: gopath 
-	GOARCH=amd64 GOOS=linux go build -o $(BUILD_DIR)/checontroller-linux-amd64 main.go
+bin/chectl-linux-amd64: gopath 
+	GOARCH=amd64 GOOS=linux go build -o $(BUILD_DIR)/chectl-linux-amd64 main.go
 
-bin/checontroller-windows-amd64: gopath 
-	GOARCH=amd64 GOOS=windows go build -o $(BUILD_DIR)/checontroller-windows-amd64.exe main.go
+bin/chectl-windows-amd64: gopath 
+	GOARCH=amd64 GOOS=windows go build -o $(BUILD_DIR)/chectl-windows-amd64.exe main.go
 
 .PHONY: gopath
 gopath:	$(GOPATH)/src/$(ORG)
@@ -41,8 +41,8 @@ clean:
 build: bin/checontroller
 
 .PHONY: allPF
-allPF: bin/checontroller bin/checontroller-darwin-amd64 bin/checontroller-linux-amd64 bin/checontroller-windows-amd64
+allPF: bin/chectl bin/chectl-darwin-amd64 bin/chectl-linux-amd64 bin/chectl-windows-amd64
 
 .PHONY: docker
-docker:	bin/checontroller-linux-amd64
+docker:	bin/chectl-linux-amd64
 	docker build --rm -t "kameshsampath/checontroller:dev" .
